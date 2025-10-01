@@ -1,0 +1,7 @@
+﻿services:
+  levelforum:
+    image: levelforum
+    build:
+      context: .
+      dockerfile: Dockerfile
+
