@@ -1,0 +1,45 @@
+@page "/settings"
+@using LevelForum.Components.Layout
+@using LevelForum.Components.Settings
+@using LevelForum.Components.Shared
+
+<PageContainer Title="Settings" Width="narrow">
+    <SettingsPanel DisplayName="@_displayName"
+                   DisplayNameChanged="v => _displayName = v"
+                   Username="@_username"
+                   CanChangeUsername="@_canChangeUsername"
+                   OnChangeUsername="ChangeUsername"
+                   FollowedTopics="@_followed"
+                   OnUnfollow="Unfollow"
+                   OnSaveProfile="SaveProfile"
+                   OnChangePassword="ChangePassword" />
+</PageContainer>
+
+@code{
+    private string _displayName = "Demo User";
+    private string _username = "demo";
+    private bool _canChangeUsername = true;
+
+    private List<SettingsPanel.TopicItem> _followed = new()
+    {
+        new SettingsPanel.TopicItem(1, "General"),
+        new SettingsPanel.TopicItem(2, "News")
+    };
+
+    private Task SaveProfile() => Task.CompletedTask;
+
+    private Task ChangeUsername(string u)
+    {
+        _username = u;
+        _canChangeUsername = false;
+        return Task.CompletedTask;
+    }
+
+    private Task Unfollow(int id)
+    {
+        _followed.RemoveAll(t => t.Id == id);
+        return Task.CompletedTask;
+    }
+
+    private Task ChangePassword((string current, string next) ev) => Task.CompletedTask;
+}

@@ -1,5 +1,168 @@
-<h3>AppSideBar</h3>
+@using System.Collections.Generic
 
-@code {
-    
+<!-- DESKTOP SIDEBAR (mini + expand on hover) -->
+<nav class="tsb hide-sm" aria-label="Topics navigation">
+  <div class="tsb-inner">
+    <div class="tsb-section-title">Followed</div>
+    @if (FollowedTopics.Any())
+    {
+      <div class="tsb-section">
+        @foreach (var t in FollowedTopics)
+        {
+          <button class="tsb-item @(t.Id==ActiveTopicId?"is-active":null)"
+                  title="@t.Title"
+                  @onclick="() => OnNavigate.InvokeAsync(t.Id)">
+            <span class="tsb-bullet">★</span>
+            <span class="tsb-label">@t.Title</span>
+            <span class="tsb-action" @onclick:stopPropagation="true">
+              <button class="pill" title="Unfollow" @onclick="() => OnUnfollow.InvokeAsync(t.Id)">−</button>
+            </span>
+          </button>
+        }
+      </div>
+    }
+    <div class="tsb-section">
+      <div class="tsb-section-title">All Topics</div>
+      @if (AllTopics.Any())
+      {
+        @foreach (var t in AllTopics)
+        {
+          <button class="tsb-item @(t.Id==ActiveTopicId?"is-active":null)"
+                  title="@t.Title"
+                  @onclick="() => OnNavigate.InvokeAsync(t.Id)">
+            <span class="tsb-bullet">•</span>
+            <span class="tsb-label">@t.Title</span>
+            <span class="tsb-action" @onclick:stopPropagation="true">
+              @if (t.IsFollowed)
+              { <button class="pill" title="Unfollow" @onclick="() => OnUnfollow.InvokeAsync(t.Id)">−</button> }
+              else
+              { <button class="pill" title="Follow" @onclick="() => OnFollow.InvokeAsync(t.Id)">＋</button> }
+            </span>
+          </button>
+        }
+      }
+    </div>
+    <div class="tsb-footer">
+      <a href="/suggest-topic" class="link">Suggest Topic</a>
+    </div>
+  </div>
+</nav>
+
+<!-- MOBILE DRAWER -->
+@if (Open)
+{
+  <div class="tsb-overlay show-sm" @onclick="() => OnClose.InvokeAsync()">
+    <nav class="tsb-drawer" @onclick:stopPropagation="true" aria-label="Topics navigation">
+      <div class="tsb-header">
+        <div class="title">Topics</div>
+        <button class="icon-btn" aria-label="Close" @onclick="() => OnClose.InvokeAsync()">✕</button>
+      </div>
+      <div class="tsb-drawer-body">
+        @* Reuse the same lists *@
+        @if (FollowedTopics?.Any() == true)
+        {
+          <div class="tsb-section">
+            <div class="tsb-section-title">Followed</div>
+            @foreach (var t in FollowedTopics)
+            {
+              <button class="tsb-row @(t.Id==ActiveTopicId?"is-active":null)"
+                      @onclick="() => NavigateAndClose(t.Id)">
+                <span>★</span><span>@t.Title</span>
+                <span class="spacer"></span>
+                <button class="pill" @onclick:stopPropagation="true" @onclick="() => OnUnfollow.InvokeAsync(t.Id)">−</button>
+              </button>
+            }
+          </div>
+        }
+        <div class="tsb-section">
+          <div class="tsb-section-title">All Topics</div>
+          @if (AllTopics is not null)
+          {
+            @foreach (var t in AllTopics)
+            {
+              <button class="tsb-row @(t.Id==ActiveTopicId?"is-active":null)"
+                      @onclick="() => NavigateAndClose(t.Id)">
+                <span>•</span><span>@t.Title</span>
+                <span class="spacer"></span>
+                @if (t.IsFollowed)
+                { <button class="pill" @onclick:stopPropagation="true" @onclick="() => OnUnfollow.InvokeAsync(t.Id)">−</button> }
+                else
+                { <button class="pill" @onclick:stopPropagation="true" @onclick="() => OnFollow.InvokeAsync(t.Id)">＋</button> }
+              </button>
+            }
+          }
+        </div>
+        <div class="tsb-footer">
+          <a class="link" href="/suggest-topic" @onclick="() => OnClose.InvokeAsync()">Suggest Topic</a>
+        </div>
+      </div>
+    </nav>
+  </div>
+}
+
+<style>
+  /* DESKTOP SIDEBAR (mini + expand) */
+  .tsb{ position:sticky; top:56px; height:calc(100vh - 56px); width:72px;
+    border-right:1px solid rgba(255,255,255,.06); background:var(--surface,#151923);
+    transition:width .18s ease; z-index:10; }
+  .tsb:hover{ width:280px }
+  .tsb-inner{ height:100%; display:flex; flex-direction:column; gap:8px; padding:8px }
+  .tsb-section-title{ color:var(--muted,#9aa3b2); font-size:12px; padding:8px 6px }
+  .tsb-item{ width:100%; display:flex; align-items:center; gap:10px; background:transparent; border:none; color:inherit;
+    border-radius:10px; padding:8px; cursor:pointer; position:relative; }
+  .tsb-item:hover{ background:rgba(255,255,255,.06) }
+  .tsb-bullet{ width:22px; text-align:center; opacity:.8 }
+  .tsb-label{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; opacity:0; transition:opacity .18s }
+  .tsb:hover .tsb-label{ opacity:1 } /* label vidljiv tek u expanded stanju */
+  .tsb-action{ opacity:0; transition:opacity .18s }
+  .tsb:hover .tsb-action{ opacity:1 }
+  .tsb-item.is-active{ outline:2px solid rgba(79,70,229,.45) }
+
+  .pill{ min-width:24px; height:24px; padding:0 6px; border-radius:999px; border:1px solid rgba(255,255,255,.1);
+    background:transparent; color:inherit; cursor:pointer }
+  .pill:hover{ background:rgba(255,255,255,.06) }
+  .tsb-footer{ margin-top:auto; padding:8px }
+  .link{ color:var(--text); opacity:.9 }
+
+  /* MOBILE DRAWER */
+  .tsb-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:60; display:flex }
+  .tsb-drawer{ width:min(90vw, 360px); background:var(--surface,#151923); height:100%; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .tsb-header{ display:flex; align-items:center; justify-content:space-between; padding:12px 12px; border-bottom:1px solid rgba(255,255,255,.06) }
+  .tsb-header .title{ font-weight:700 }
+  .tsb-drawer-body{ padding:8px; display:flex; flex-direction:column; gap:8px; height:calc(100% - 52px); overflow:auto }
+  .tsb-row{ width:100%; display:flex; align-items:center; gap:10px; background:transparent; border:none; color:inherit;
+    border-radius:10px; padding:10px; cursor:pointer; }
+  .tsb-row:hover{ background:rgba(255,255,255,.06) }
+  .tsb-row.is-active{ outline:2px solid rgba(79,70,229,.45) }
+  .spacer{ flex:1 }
+
+  /* responsive helpers */
+  .hide-sm{ display:block }
+  .show-sm{ display:none }
+  @@media (max-width:960px){
+  .hide-sm{ display:none }
+  .show-sm{ display:block }
+  }
+
+</style>
+
+@code{
+  [Parameter] public bool Open { get; set; }
+  [Parameter] public int? ActiveTopicId { get; set; }
+  [Parameter] public IEnumerable<TopicItem> FollowedTopics { get; set; }
+  [Parameter] public IEnumerable<TopicItem> AllTopics { get; set; }
+
+  [Parameter] public EventCallback<int> OnNavigate { get; set; }
+  [Parameter] public EventCallback<int> OnFollow { get; set; }
+  [Parameter] public EventCallback<int> OnUnfollow { get; set; }
+  [Parameter] public EventCallback OnClose { get; set; }
+
+  Task NavigateAndClose(int id)
+  {
+    OnClose.InvokeAsync();
+    return OnNavigate.InvokeAsync(id);
+  }
+
+  // UI-only struct (drži isto ime kao u AppShell-u da bude kompatibilno)
+  public record TopicItem(int Id, string Title, bool IsFollowed = false, bool IsLocked = false);
 }

@@ -1,5 +1,30 @@
-<h3>AppModal</h3>
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="OnBackdrop">
+        <div class="modal" @onclick:stopPropagation="true">
+            @if (Header is not null) { <div class="modal__header">@Header</div> }
+            <div class="modal__body">@ChildContent</div>
+            @if (Footer is not null) { <div class="modal__footer">@Footer</div> }
+        </div>
+    </div>
+}
 
-@code {
-    
+@code{
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
+    [Parameter] public EventCallback OnClose { get; set; }
+    async Task OnBackdrop() { if (CloseOnBackdrop) await OnClose.InvokeAsync(); }
+    protected override void OnInitialized() => KeyHandler.Subscribe(this, HandleKey);
+    public async Task HandleKey(KeyboardEventArgs e){ if (e.Key=="Escape" && Open) await OnClose.InvokeAsync(); }
+    public void Dispose()=> KeyHandler.Unsubscribe(this);
+    // Minimal key handler (možeš izdvojiti u servis)
+    static class KeyHandler{
+        static readonly List<(object, Func<KeyboardEventArgs,Task>)> subs=new();
+        [JSInvokable] public static Task Route(KeyboardEventArgs e){ return Task.WhenAll(subs.Select(s=>s.Item2(e))); }
+        public static void Subscribe(object o, Func<KeyboardEventArgs,Task> cb){ if(!subs.Any(s=>s.Item1==o)) subs.Add((o,cb)); }
+        public static void Unsubscribe(object o){ subs.RemoveAll(s=>s.Item1==o); }
+    }
 }

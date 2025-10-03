@@ -1,5 +1,15 @@
-<h3>AppCheckbox</h3>
+@using System.Linq.Expressions
 
-@code {
-    
+<label class="chk">
+    <InputCheckbox @bind-Value="Value"  />
+    <span class="chk-box"></span>
+    <span>@Label</span>
+</label>
+@* <ValidationMessage For="For"><div class="error">@context</div></ValidationMessage> *@
+
+@code{
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<bool>>? For { get; set; }
 }

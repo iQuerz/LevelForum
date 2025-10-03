@@ -1,0 +1,146 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="post-header app-card">
+  <div class="ph-wrap">
+    <div class="ph-vote">
+      <button type="button"
+              class="vote-btn @(MyVote==1?"up-active":null)"
+              aria-label="Upvote"
+              aria-pressed="@(MyVote==1)"
+              disabled="@VoteDisabled"
+              @onclick="() => Vote(+1)">▲</button>
+
+      <div class="ph-score" aria-live="polite">@Score</div>
+
+      <button type="button"
+              class="vote-btn @(MyVote==-1?"down-active":null)"
+              aria-label="Downvote"
+              aria-pressed="@(MyVote==-1)"
+              disabled="@VoteDisabled"
+              @onclick="() => Vote(-1)">▼</button>
+    </div>
+
+    <div class="ph-body">
+      <h1 class="ph-title">
+        @Title
+        @if (TopicLocked)
+        {
+          <span class="chip ph-chip-lock" title="Topic locked">🔒 Locked</span>
+        }
+      </h1>
+
+      <div class="ph-meta">
+        <a class="chip ph-chip-topic" href="@($"/topic/{TopicId}")">@TopicTitle</a>
+        <span class="ph-dot">•</span>
+        <span class="ph-author">@AuthorName</span>
+        <span class="ph-dot">•</span>
+        <time class="ph-time" title="@CreatedAt.ToLocalTime().ToString("g")">@TimeAgo(CreatedAt)</time>
+
+        <span class="ph-flex"></span>
+
+        <button type="button"
+                class="icon-btn"
+                title="Report post"
+                @onclick="() => OnReport.InvokeAsync(Id)">🚩</button>
+
+        @if (ShowActionsMenu)
+        {
+          <div class="ph-menu">
+            <button type="button" class="icon-btn" aria-expanded="@_menuOpen" aria-haspopup="menu" @onclick="ToggleMenu">⋮</button>
+            @if (_menuOpen)
+            {
+              <div class="ph-menu-pop" role="menu">
+                @if (CanEditPost)
+                {
+                  <button type="button" class="ph-menu-item" role="menuitem" @onclick="() => { _menuOpen=false; OnEditPost.InvokeAsync(Id);}">Edit post</button>
+                }
+                @if (CanDeletePost)
+                {
+                  <button type="button" class="ph-menu-item danger" role="menuitem" @onclick="() => { _menuOpen=false; OnDeletePost.InvokeAsync(Id);}">Delete post</button>
+                }
+                @if (CanLockTopic)
+                {
+                  <button type="button" class="ph-menu-item" role="menuitem" @onclick="() => { _menuOpen=false; OnToggleLockTopic.InvokeAsync(!TopicLocked);}">
+                    @(TopicLocked ? "Unlock topic" : "Lock topic")
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+@code{
+  [Parameter] public int Id { get; set; }
+  [Parameter] public string Title { get; set; } = string.Empty;
+
+  [Parameter] public int TopicId { get; set; }
+  [Parameter] public string TopicTitle { get; set; } = string.Empty;
+  [Parameter] public bool TopicLocked { get; set; }
+
+  [Parameter] public string AuthorName { get; set; } = string.Empty;
+  [Parameter] public DateTime CreatedAt { get; set; }
+
+  [Parameter] public int Score { get; set; }
+  [Parameter] public int? MyVote { get; set; } // -1/0/+1
+  [Parameter] public bool VoteDisabled { get; set; }
+
+  [Parameter] public bool CanEditPost { get; set; } = false;
+  [Parameter] public bool CanDeletePost { get; set; } = false;
+  [Parameter] public bool CanLockTopic { get; set; } = false;
+
+  [Parameter] public EventCallback<(int postId, int value)> OnVote { get; set; }
+  [Parameter] public EventCallback<int> OnReport { get; set; }
+  [Parameter] public EventCallback<int> OnEditPost { get; set; }
+  [Parameter] public EventCallback<int> OnDeletePost { get; set; }
+  [Parameter] public EventCallback<bool> OnToggleLockTopic { get; set; }
+
+  bool _menuOpen;
+
+  bool ShowActionsMenu => CanEditPost || CanDeletePost || CanLockTopic;
+
+  Task Vote(int v) => OnVote.InvokeAsync((Id, v));
+  void ToggleMenu() => _menuOpen = !_menuOpen;
+
+  static string TimeAgo(DateTime utc)
+  {
+    var dt = utc.ToLocalTime();
+    var span = DateTime.Now - dt;
+    if (span.TotalSeconds < 60) return "just now";
+    if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m";
+    if (span.TotalHours < 24) return $"{(int)span.TotalHours}h";
+    if (span.TotalDays < 7) return $"{(int)span.TotalDays}d";
+    return dt.ToString("yyyy-MM-dd");
+  }
+}
+
+<style>
+  /* POST HEADER */
+  .post-header{ padding:12px }
+  .ph-wrap{ display:flex; gap:12px }
+  .ph-vote{ width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:2px 0 }
+  .vote-btn{ width:36px; height:28px; border-radius:8px; border:1px solid var(--border-color);
+    background:transparent; color:var(--muted); cursor:pointer; line-height:1 }
+  .vote-btn:hover{ background:rgba(255,255,255,.06) }
+  .up-active{ color:var(--primary) } .down-active{ color:var(--danger) }
+  .ph-score{ min-width:28px; text-align:center; font-weight:600; color:var(--text) }
+
+  .ph-body{ flex:1; display:flex; flex-direction:column; gap:6px }
+  .ph-title{ font-size:24px; margin:0; color:var(--text) }
+  .ph-chip-topic{ background:var(--surface-2); color:var(--text); border:1px solid var(--border-color) }
+  .ph-chip-lock{ background:var(--warning); color:var(--on-warning); border:1px solid transparent; margin-left:8px; font-size:12px; padding:2px 6px; border-radius:999px }
+  .ph-meta{ display:flex; align-items:center; gap:8px; color:var(--muted) }
+  .ph-dot{ opacity:.7 } .ph-flex{ flex:1 }
+
+  .ph-menu{ position:relative }
+  .ph-menu-pop{ position:absolute; right:0; top:32px; min-width:160px; background:var(--surface);
+    border:1px solid var(--border-color); border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,.35); padding:6px; z-index:20 }
+  .ph-menu-item{ width:100%; text-align:left; background:transparent; border:none; color:var(--text);
+    padding:8px 10px; border-radius:8px; cursor:pointer }
+  .ph-menu-item:hover{ background:rgba(255,255,255,.06) }
+  .ph-menu-item.danger{ color:var(--on-danger); background:var(--danger); border-radius:8px }
+  .ph-menu-item.danger:hover{ filter:brightness(0.95) }
+</style>

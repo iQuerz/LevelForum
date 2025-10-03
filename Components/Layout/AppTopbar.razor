@@ -1,5 +1,71 @@
-<h3>AppTopBar</h3>
+@using System.Timers
 
-@code {
-    
+<div class="app-topbar">
+    <div class="tb-left">
+        <button class="icon-btn show-sm" aria-label="Open menu" @onclick="OnToggleSidebar">
+            ☰
+        </button>
+        <a href="/" class="brand">@Title</a>
+    </div>
+
+    <div class="tb-center">
+        <input class="tb-search"
+               placeholder="Search topics…"
+               @oninput="HandleInput"
+               value="@_q"
+               aria-label="Search topics" />
+    </div>
+
+    <div class="tb-right">
+        <button class="icon-btn" aria-label="Notifications">
+            🔔
+            @if (UnreadCount > 0)
+            { <span class="badge">@UnreadCount</span> }
+        </button>
+        <div class="avatar" title="Account">LF</div>
+    </div>
+</div>
+
+<style>
+    /* TOPBAR */
+    .app-topbar{ display:flex; align-items:center; gap:12px; height:56px; padding:0 12px;
+        max-width:1120px; margin:0 auto; }
+    .tb-left{ display:flex; align-items:center; gap:10px }
+    .tb-center{ flex:1; display:flex; justify-content:center }
+    .tb-right{ display:flex; align-items:center; gap:10px }
+    .brand{ font-weight:700; font-size:18px; color:var(--text) }
+    .tb-search{ width:min(520px, 100%); background:var(--surface-2,#1b2130); border:1px solid rgba(255,255,255,.08);
+        border-radius:10px; color:var(--text); padding:8px 12px; line-height:1; }
+    .icon-btn{ position:relative; display:inline-flex; align-items:center; justify-content:center;
+        width:36px; height:36px; border-radius:8px; background:transparent; border:1px solid rgba(255,255,255,.1);
+        color:var(--text); cursor:pointer; }
+    .icon-btn:hover{ background:rgba(255,255,255,.06) }
+    .badge{ position:absolute; top:-6px; right:-6px; background:var(--primary,#4f46e5); color:#fff;
+        border-radius:999px; font-size:11px; padding:2px 6px; line-height:1; }
+    .avatar{ width:32px; height:32px; border-radius:50%; background:#2a3142; display:flex; align-items:center; justify-content:center; font-weight:700 }
+
+    /* show/hide hamburger depending on width */
+    .show-sm{ display:none }
+    @@media (max-width:960px){
+    .show-sm{ display:inline-flex }
+    }
+</style>
+
+@code{
+    [Parameter] public string Title { get; set; } = "LevelForum";
+    [Parameter] public int UnreadCount { get; set; }
+    [Parameter] public EventCallback<string?> OnSearch { get; set; }
+    [Parameter] public EventCallback OnToggleSidebar { get; set; }
+
+    string? _q;
+    Timer? _debouncer;
+
+    void HandleInput(ChangeEventArgs e)
+    {
+        _q = e.Value?.ToString();
+        _debouncer?.Stop();
+        _debouncer ??= new Timer(250) { AutoReset = false };
+        _debouncer.Elapsed += async (_, __) => await InvokeAsync(() => OnSearch.InvokeAsync(_q));
+        _debouncer.Start();
+    }
 }

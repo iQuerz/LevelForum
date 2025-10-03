@@ -1,0 +1,167 @@
+@page "/post/{Id:int}"
+@using LevelForum.Components.Layout
+@using LevelForum.Components.Posts
+@using LevelForum.Components.Comments
+@using LevelForum.Components.Shared
+@inject NavigationManager Nav
+
+<PageContainer Width="narrow">
+    <PostHeader Id="@Id"
+                Title="@_title"
+                TopicId="@_topicId"
+                TopicTitle="@_topicTitle"
+                TopicLocked="@_topicLocked"
+                AuthorName="@_author"
+                CreatedAt="@_created"
+                Score="@_score"
+                MyVote="@_myVote"
+                VoteDisabled="false"
+                CanEditPost="@_canEdit"
+                CanDeletePost="@_canEdit"
+                CanLockTopic="@_canLockTopic"
+                OnVote="HandleVote"
+                OnReport="ReportPost"
+                OnEditPost="EditPost"
+                OnDeletePost="DeletePost"
+                OnToggleLockTopic="LockTopic" />
+
+    <PostBody Text="@_body" />
+
+    <div style="height:8px"></div>
+
+    @if (!_topicLocked)
+    {
+        <CommentComposer CanPost="true"
+                         Placeholder="Write a comment…"
+                         MaxChars="2000"
+                         OnSubmit="AddComment" />
+    }
+    else
+    {
+        <div class="app-card" style="padding:12px;">Topic is locked. You cannot reply.</div>
+    }
+
+    <div style="height:8px"></div>
+
+    <CommentThread Items="@_comments"
+                   IsLoading="@_loading"
+                   HasMore="@_hasMore"
+                   IsLoadingMore="@_loadingMore"
+                   OnLoadMore="LoadMore"
+                   OnVote="VoteComment"
+                   OnReport="ReportComment"
+                   OnReply="ReplyTo"
+                   OnEdit="EditComment"
+                   OnDelete="DeleteComment" />
+</PageContainer>
+
+@code{
+    [Parameter] public int Id { get; set; }
+
+    private string _title = "Post title";
+    private int _topicId = 1;
+    private string _topicTitle = "General";
+    private bool _topicLocked = false;
+
+    private string _author = "Alice";
+    private DateTime _created = DateTime.UtcNow.AddHours(-2);
+    private int _score = 12;
+    private int? _myVote = 0;
+    private string _body = "This is the body of the post.\nPlain text only.";
+
+    private bool _canEdit = true;
+    private bool _canLockTopic = true;
+
+    private List<CommentThread.CommentVm> _comments = new();
+    private bool _loading;
+    private bool _loadingMore;
+    private bool _hasMore = true;
+
+    protected override void OnInitialized()
+    {
+        // few seed comments
+        _comments.Add(new CommentThread.CommentVm(1, null, "Bob", "Nice post!", DateTime.UtcNow.AddMinutes(-50), 3, 0, false, false));
+        _comments.Add(new CommentThread.CommentVm(2, null, "Carla", "I agree with this.", DateTime.UtcNow.AddMinutes(-40), 2, 0, false, false));
+        _comments.Add(new CommentThread.CommentVm(3, 2, "Dina", "Same here!", DateTime.UtcNow.AddMinutes(-30), 1, 0, false, false));
+    }
+
+    private Task HandleVote((int postId, int value) ev)
+    {
+        var old = _myVote ?? 0;
+        var next = (old == ev.value) ? 0 : ev.value;
+        _score += next - old;
+        _myVote = next == 0 ? (int?)null : next;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task ReportPost(int postId) => Task.CompletedTask;
+    private Task EditPost(int postId) => Task.CompletedTask;
+    private Task DeletePost(int postId)
+    {
+        Nav.NavigateTo("/");
+        return Task.CompletedTask;
+    }
+
+    private Task LockTopic(bool next) { _topicLocked = next; return Task.CompletedTask; }
+
+    private Task AddComment(string text)
+    {
+        var id = (_comments.Max(c => c.Id) + 1);
+        _comments.Insert(0, new CommentThread.CommentVm(id, null, "Me", text, DateTime.UtcNow, 0, 0, true, false));
+        return Task.CompletedTask;
+    }
+
+    private Task LoadMore()
+    {
+        _loadingMore = true;
+        StateHasChanged();
+        // demo add 2
+        var start = _comments.Max(c => c.Id) + 1;
+        _comments.Add(new CommentThread.CommentVm(start, null, "Eva", "More thoughts…", DateTime.UtcNow.AddHours(-5), 0, 0, false, false));
+        _comments.Add(new CommentThread.CommentVm(start + 1, start, "Frank", "Reply to that.", DateTime.UtcNow.AddHours(-4), 0, 0, false, false));
+        _hasMore = false;
+        _loadingMore = false;
+        return Task.CompletedTask;
+    }
+
+    private Task VoteComment((int commentId, int value) ev)
+    {
+        var idx = _comments.FindIndex(c => c.Id == ev.commentId);
+        if (idx < 0) return Task.CompletedTask;
+        var it = _comments[idx];
+        var old = it.MyVote ?? 0;
+        var next = (old == ev.value) ? 0 : ev.value;
+        var delta = next - old;
+        _comments[idx] = it with { MyVote = next == 0 ? (int?)null : next, Score = it.Score + delta };
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task ReportComment(int id) => Task.CompletedTask;
+
+    private Task ReplyTo((int parentId, string text) ev)
+    {
+        var newId = _comments.Max(c => c.Id) + 1;
+        _comments.Add(new CommentThread.CommentVm(newId, ev.parentId, "Me", ev.text, DateTime.UtcNow, 0, 0, true, false));
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task EditComment((int commentId, string text) ev)
+    {
+        var idx = _comments.FindIndex(c => c.Id == ev.commentId);
+        if (idx < 0) return Task.CompletedTask;
+        var it = _comments[idx];
+        _comments[idx] = it with { Body = ev.text };
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task DeleteComment(int id)
+    {
+        _comments.RemoveAll(c => c.Id == id || c.ParentId == id);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+}

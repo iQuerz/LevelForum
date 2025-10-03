@@ -1,0 +1,155 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="settings">
+    <div class="settings-tabs">
+        @foreach (var t in Tabs)
+        {
+            <button type="button"
+                    class="settings-tab @(ActiveTab==t ? "is-active" : null)"
+                    @onclick="() => SetTab(t)">@t</button>
+        }
+    </div>
+
+    <div class="settings-body">
+        @if (ActiveTab == "Profile")
+        {
+            <div class="app-card settings-card">
+                <div class="settings-row">
+                    <label class="label">Display name</label>
+                    <input class="input" @bind="DisplayName" maxlength="60" />
+                </div>
+
+                <div class="settings-row">
+                    <label class="label">Username</label>
+                    <div class="row-inline">
+                        <input class="input" @bind="Username" disabled="@(!CanChangeUsername)" maxlength="32" />
+                        <button type="button" class="btn-ghost" disabled="@(!CanChangeUsername)" @onclick="ChangeUsername">Save</button>
+                    </div>
+                    @if (!CanChangeUsername)
+                    {
+                        <div class="help">You can change your username only once.</div>
+                    }
+                </div>
+
+                <div class="settings-actions">
+                    <button type="button" class="btn-primary" @onclick="SaveProfile">Save profile</button>
+                </div>
+            </div>
+        }
+        else if (ActiveTab == "Password")
+        {
+            <div class="app-card settings-card">
+                <div class="settings-row">
+                    <label class="label">Current password</label>
+                    <input class="input" type="password" @bind="CurrentPassword" />
+                </div>
+                <div class="settings-row">
+                    <label class="label">New password</label>
+                    <input class="input" type="password" @bind="NewPassword" @oninput="e => UpdateStrength()" />
+                    <div class="help">Strength: @PasswordStrength</div>
+                </div>
+                <div class="settings-row">
+                    <label class="label">Confirm new password</label>
+                    <input class="input" type="password" @bind="ConfirmPassword" />
+                </div>
+                <div class="settings-actions">
+                    <button type="button" class="btn-primary" disabled="@(!CanSubmitPassword)" @onclick="ChangePassword">Change password</button>
+                </div>
+            </div>
+        }
+        else if (ActiveTab == "Followed")
+        {
+            <div class="app-card settings-card">
+                @if (FollowedTopics?.Any() == true)
+                {
+                    @foreach (var t in FollowedTopics!)
+                    {
+                        <div class="topic-row">
+                            <span class="chip">@t.Title</span>
+                            <span class="flex"></span>
+                            <button type="button" class="btn-ghost" @onclick="() => Unfollow(t.Id)">Unfollow</button>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="help">You are not following any topics.</div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code{
+    public record TopicItem(int Id, string Title);
+
+    [Parameter] public string DisplayName { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> DisplayNameChanged { get; set; }
+
+    [Parameter] public string Username { get; set; } = string.Empty;
+    [Parameter] public bool CanChangeUsername { get; set; } = true;
+    [Parameter] public EventCallback<string> OnChangeUsername { get; set; }
+
+    [Parameter] public IEnumerable<TopicItem>? FollowedTopics { get; set; }
+    [Parameter] public EventCallback<int> OnUnfollow { get; set; }
+
+    [Parameter] public EventCallback OnSaveProfile { get; set; }
+    [Parameter] public EventCallback<(string current, string next)> OnChangePassword { get; set; }
+
+    private string ActiveTab { get; set; } = "Profile";
+    private string CurrentPassword { get; set; } = string.Empty;
+    private string NewPassword { get; set; } = string.Empty;
+    private string ConfirmPassword { get; set; } = string.Empty;
+    private string PasswordStrength { get; set; } = "—";
+
+    private static readonly string[] Tabs = new[] { "Profile", "Password", "Followed" };
+
+    private void SetTab(string t) => ActiveTab = t;
+
+    private Task SaveProfile() => DisplayNameChanged.InvokeAsync(DisplayName).ContinueWith(_ => OnSaveProfile.InvokeAsync());
+
+    private Task ChangeUsername() => OnChangeUsername.InvokeAsync(Username);
+
+    private bool CanSubmitPassword => !string.IsNullOrWhiteSpace(CurrentPassword)
+                                      && !string.IsNullOrWhiteSpace(NewPassword)
+                                      && NewPassword == ConfirmPassword;
+
+    private Task ChangePassword() => OnChangePassword.InvokeAsync((CurrentPassword, NewPassword));
+
+    private void UpdateStrength()
+    {
+        var len = NewPassword?.Length ?? 0;
+        var score = 0;
+        if (len >= 8) score++;
+        if (NewPassword.Any(char.IsUpper)) score++;
+        if (NewPassword.Any(char.IsLower)) score++;
+        if (NewPassword.Any(char.IsDigit)) score++;
+        if (NewPassword.Any(ch => "!@#$%^&*()_+-=[]{}|;':\",.<>/?".Contains(ch))) score++;
+        PasswordStrength = score switch
+        {
+            <=2 => "Weak",
+            3 => "Okay",
+            4 => "Good",
+            _ => "Strong"
+        };
+    }
+
+    private Task Unfollow(int id) => OnUnfollow.InvokeAsync(id);
+}
+
+<style>
+    /* SETTINGS */
+    .settings { display: flex; flex-direction: column; gap: 12px; }
+    .settings-tabs { display: flex; gap: 8px; }
+    .settings-tab {
+        border: 1px solid var(--border-color); background: transparent; color: var(--text);
+        border-radius: 999px; padding: 6px 12px; cursor: pointer;
+    }
+    .settings-tab:hover { background: rgba(255,255,255,.06); }
+    .settings-tab.is-active { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+    .settings-body { display: flex; flex-direction: column; gap: 12px; }
+    .settings-card { padding: 12px; }
+    .settings-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .row-inline { display: flex; gap: 8px; }
+    .settings-actions { display: flex; gap: 8px; }
+</style>

@@ -1,0 +1,80 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="composer">
+    @if (!CanPost)
+    {
+        <div class="composer-locked">
+            <button type="button" class="btn-ghost" @onclick="OnLoginRequested">Login to reply</button>
+        </div>
+    }
+    else
+    {
+        <textarea class="composer-input"
+              placeholder="@Placeholder"
+              maxlength="@MaxChars"
+              @oninput="OnInput"
+              value="@_text"></textarea>
+
+        <div class="composer-bar">
+            <div class="composer-count">@(_text?.Length ?? 0)/@MaxChars</div>
+            <div class="composer-actions">
+                @if (ShowCancel)
+                {
+                    <button type="button" class="btn-ghost" @onclick="Cancel">Cancel</button>
+                }
+                <button type="button"
+                        class="btn-primary"
+                        disabled="@IsDisabled"
+                        @onclick="Submit">Post</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code{
+    [Parameter] public bool CanPost { get; set; } = true;
+    [Parameter] public int MaxChars { get; set; } = 2000;
+    [Parameter] public string Placeholder { get; set; } = "Write a comment…";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool ShowCancel { get; set; } = false;
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback<string> OnSubmit { get; set; }
+    [Parameter] public EventCallback OnLoginRequested { get; set; }
+
+    string? _text;
+
+    protected override void OnParametersSet()
+    {
+        _text ??= Value;
+    }
+
+    void OnInput(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString();
+        ValueChanged.InvokeAsync(_text);
+    }
+
+    bool IsDisabled => string.IsNullOrWhiteSpace(_text) || (_text?.Length ?? 0) > MaxChars;
+
+    Task Submit() => IsDisabled ? Task.CompletedTask : OnSubmit.InvokeAsync(_text!.Trim());
+    Task Cancel() => OnCancel.InvokeAsync();
+}
+
+<style>
+    /* COMPOSER */
+    .composer{ background:var(--surface); border:1px solid var(--border-color); border-radius:10px; padding:8px }
+    .composer-locked{ display:flex; justify-content:center }
+    .composer-input{ width:100%; min-height:80px; background:var(--surface-2); color:var(--text);
+        border:1px solid var(--border-color); border-radius:10px; padding:8px 10px; resize:vertical }
+    .composer-input:focus{ outline:none; box-shadow:var(--ring-shadow) }
+    .composer-bar{ display:flex; align-items:center; justify-content:space-between; margin-top:6px }
+    .composer-count{ font-size:12px; color:var(--muted) }
+    .composer-actions{ display:flex; gap:8px }
+    .btn-primary{ background:var(--primary); color:var(--on-primary); border:1px solid transparent; border-radius:10px; padding:8px 12px; cursor:pointer }
+    .btn-primary:disabled{ opacity:.6; cursor:not-allowed }
+    .btn-ghost{ background:transparent; color:var(--text); border:1px solid var(--border-color);
+        border-radius:10px; padding:8px 12px; cursor:pointer }
+    .btn-ghost:hover{ background:rgba(255,255,255,.06) }
+</style>

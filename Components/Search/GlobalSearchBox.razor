@@ -1,0 +1,153 @@
+@using System.Timers
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="gsearch">
+    <div class="gsearch-box" @onkeydown="OnKeyDown">
+        <span class="gsearch-icon">🔎</span>
+        <input class="gsearch-input"
+               placeholder="Search topics…"
+               @oninput="OnInput"
+               value="@Query"
+               aria-label="Search topics" />
+        @if (!string.IsNullOrWhiteSpace(Query))
+        {
+            <button type="button" class="gsearch-clear" aria-label="Clear" @onclick="Clear">✕</button>
+        }
+    </div>
+
+    @if (ShowSuggestions && Suggestions?.Any() == true)
+    {
+        <div class="gsearch-pop">
+            @foreach (var (item, idx) in Suggestions.Select((s, i) => (s, i)))
+            {
+                <button type="button"
+                        class="gsearch-item @(idx == _activeIndex ? "is-active" : null)"
+                        @onclick="() => Pick(item)">
+                    <span class="gsearch-item-text">@item.Title</span>
+                </button>
+            }
+            <div class="gsearch-foot">Press Enter to search “@Query”.</div>
+        </div>
+    }
+</div>
+
+@code{
+    public record Suggestion(int Id, string Title);
+
+    [Parameter] public string? Query { get; set; }
+    [Parameter] public EventCallback<string?> QueryChanged { get; set; }
+
+    [Parameter] public IEnumerable<Suggestion>? Suggestions { get; set; }
+    [Parameter] public bool ShowSuggestions { get; set; } = true;
+
+    [Parameter] public EventCallback<string?> OnSearch { get; set; }
+    [Parameter] public EventCallback<string?> OnSuggest { get; set; } // debounced query change
+    [Parameter] public EventCallback<Suggestion> OnPick { get; set; }
+
+    private Timer? _debounce;
+    private int _activeIndex = -1;
+
+    protected override void OnParametersSet()
+    {
+        // keep active index in range
+        var count = Suggestions?.Count() ?? 0;
+        if (_activeIndex >= count) _activeIndex = count - 1;
+        if (count == 0) _activeIndex = -1;
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Query = e.Value?.ToString();
+        await QueryChanged.InvokeAsync(Query);
+
+        _debounce?.Stop();
+        _debounce ??= new Timer(250) { AutoReset = false };
+        _debounce.Elapsed += async (_, __) => await InvokeAsync(() => OnSuggest.InvokeAsync(Query));
+        _debounce.Start();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        var list = Suggestions?.ToList() ?? new List<Suggestion>();
+        if (e.Key == "Enter")
+        {
+            if (_activeIndex >= 0 && _activeIndex < list.Count)
+            {
+                await Pick(list[_activeIndex]);
+            }
+            else
+            {
+                await OnSearch.InvokeAsync(Query);
+            }
+        }
+        else if (e.Key == "ArrowDown" && list.Count > 0)
+        {
+            _activeIndex = (_activeIndex + 1) % list.Count;
+            StateHasChanged();
+        }
+        else if (e.Key == "ArrowUp" && list.Count > 0)
+        {
+            _activeIndex = (_activeIndex - 1 + list.Count) % list.Count;
+            StateHasChanged();
+        }
+        else if (e.Key == "Escape")
+        {
+            _activeIndex = -1;
+            Suggestions = Array.Empty<Suggestion>();
+            StateHasChanged();
+        }
+    }
+
+    private async Task Pick(Suggestion s)
+    {
+        _activeIndex = -1;
+        await OnPick.InvokeAsync(s);
+    }
+
+    private async Task Clear()
+    {
+        Query = string.Empty;
+        _activeIndex = -1;
+        await QueryChanged.InvokeAsync(Query);
+        await OnSuggest.InvokeAsync(Query);
+    }
+}
+
+<style>
+    /* GLOBAL SEARCH (topbar) */
+    .gsearch { position: relative; }
+    .gsearch-box { position: relative; display: flex; align-items: center; gap: 8px; }
+    .gsearch-icon { position: absolute; left: 10px; opacity: .8; }
+    .gsearch-input {
+        width: min(520px, 100%);
+        background: var(--surface-2);
+        border: 1px solid var(--border-color);
+        color: var(--text);
+        padding: 8px 32px 8px 30px;
+        border-radius: 10px;
+        line-height: 1;
+    }
+    .gsearch-input::placeholder { color: var(--muted); }
+    .gsearch-input:focus { outline: none; box-shadow: var(--ring-shadow); }
+    .gsearch-clear {
+        position: absolute; right: 6px;
+        width: 28px; height: 28px; border-radius: 8px;
+        border: 1px solid var(--border-color); background: transparent; color: var(--text);
+    }
+    .gsearch-pop {
+        position: absolute; top: 40px; left: 0; width: 100%;
+        background: var(--surface); color: var(--text);
+        border: 1px solid var(--border-color); border-radius: 10px;
+        box-shadow: 0 12px 38px rgba(0,0,0,.35);
+        overflow: hidden; z-index: 40;
+    }
+    .gsearch-item {
+        width: 100%; text-align: left; background: transparent; color: var(--text);
+        border: none; padding: 10px 12px; cursor: pointer;
+    }
+    .gsearch-item:hover, .gsearch-item.is-active { background: rgba(255,255,255,.06); }
+    .gsearch-item-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gsearch-foot { padding: 8px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border-color); }
+
+</style>

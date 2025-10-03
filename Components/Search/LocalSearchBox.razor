@@ -1,0 +1,56 @@
+@using System.Timers
+@using Microsoft.AspNetCore.Components
+
+<div class="lsearch">
+    <input class="lsearch-input"
+           placeholder="Filter posts by title…"
+           @oninput="OnInput"
+           value="@Value"
+           aria-label="Filter posts" />
+    @if (!string.IsNullOrWhiteSpace(Value))
+    {
+        <button type="button" class="lsearch-clear" aria-label="Clear filter" @onclick="Clear">✕</button>
+    }
+</div>
+
+@code{
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public EventCallback<string?> OnSearch { get; set; }
+
+    private Timer? _debounce;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString();
+        await ValueChanged.InvokeAsync(Value);
+
+        _debounce?.Stop();
+        _debounce ??= new Timer(250) { AutoReset = false };
+        _debounce.Elapsed += async (_, __) => await InvokeAsync(() => OnSearch.InvokeAsync(Value));
+        _debounce.Start();
+    }
+
+    private async Task Clear()
+    {
+        Value = string.Empty;
+        await ValueChanged.InvokeAsync(Value);
+        await OnSearch.InvokeAsync(Value);
+    }
+}
+
+<style>
+    /* LOCAL SEARCH (toolbar inline) */
+    .lsearch { position: relative; display: inline-flex; align-items: center; }
+    .lsearch-input {
+        background: var(--surface-2); border: 1px solid var(--border-color);
+        color: var(--text); padding: 8px 30px 8px 10px; border-radius: 10px; line-height: 1;
+    }
+    .lsearch-input::placeholder { color: var(--muted); }
+    .lsearch-input:focus { outline: none; box-shadow: var(--ring-shadow); }
+    .lsearch-clear {
+        position: absolute; right: 4px;
+        width: 24px; height: 24px; border-radius: 8px;
+        border: 1px solid var(--border-color); background: transparent; color: var(--text);
+    }
+</style>

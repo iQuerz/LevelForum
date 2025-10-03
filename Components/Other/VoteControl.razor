@@ -1,0 +1,95 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="vote-ctl">
+    <button type="button"
+            class="vote-btn @(LocalVote==1 ? "up-active" : null)"
+            aria-label="Upvote"
+            aria-pressed="@(LocalVote==1)"
+            disabled="@Disabled"
+            @onclick="() => Click(1)">▲</button>
+
+    <div class="vote-score" aria-live="polite">@LocalScore</div>
+
+    <button type="button"
+            class="vote-btn @(LocalVote==-1 ? "down-active" : null)"
+            aria-label="Downvote"
+            aria-pressed="@(LocalVote==-1)"
+            disabled="@Disabled"
+            @onclick="() => Click(-1)">▼</button>
+</div>
+
+@code{
+    [Parameter] public int Score { get; set; }
+    [Parameter] public int? MyVote { get; set; } // -1, 0, +1 or null
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<int> OnVote { get; set; } // emits -1, 0, +1
+
+    private int LocalScore;
+    private int? LocalVote;
+    private bool _initialized;
+
+    protected override void OnParametersSet()
+    {
+        var norm = Normalize(MyVote);
+        if (!_initialized || LocalScore != Score || LocalVote != norm)
+        {
+            LocalScore = Score;
+            LocalVote = norm;
+            _initialized = true;
+        }
+    }
+
+    private async Task Click(int dir)
+    {
+        if (Disabled) return;
+
+        var newVote = (LocalVote == dir) ? 0 : dir;
+        var delta = CalcDelta(LocalVote, newVote);
+
+        LocalVote = Normalize(newVote);
+        LocalScore += delta;
+
+        await OnVote.InvokeAsync(newVote);
+    }
+
+    private static int? Normalize(int? v) => (v == 0) ? null : v;
+
+    private static int CalcDelta(int? prev, int next)
+    {
+        if (prev is null || prev == 0)
+            return next;                  // 0 -> +1/-1
+        if (next == 0)
+            return -prev.Value;          // +1/-1 -> 0
+        return next - prev.Value;        // +1 -> -1 (= -2) or -1 -> +1 (= +2)
+    }
+}
+
+<style>
+    /* vote control */
+    .vote-ctl {
+        width: 52px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+    .vote-btn {
+        width: 36px;
+        height: 28px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        line-height: 1;
+    }
+    .vote-btn:hover { background: rgba(255,255,255,.06); }
+    .up-active { color: var(--primary); }
+    .down-active { color: var(--danger); }
+    .vote-score {
+        min-width: 28px;
+        text-align: center;
+        font-weight: 600;
+        color: var(--text);
+    }
+</style>

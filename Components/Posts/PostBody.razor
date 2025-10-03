@@ -1,0 +1,28 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="post-body">
+    <div class="post-body-inner">
+        @if (!string.IsNullOrWhiteSpace(Text))
+        {
+            <div class="post-text">@Text</div>
+        }
+        else
+        {
+            <div class="post-text muted">No content.</div>
+        }
+    </div>
+</div>
+
+@code{
+    /// <summary>Plain text only. New lines are preserved; no user HTML rendered.</summary>
+    [Parameter] public string? Text { get; set; }
+}
+
+<style>
+
+    /* POST BODY */
+    .post-body{ margin-top:8px }
+    .post-body-inner{ max-width:720px; padding:12px }
+    .post-text{ white-space:pre-wrap; color:var(--text); font-size:16px; line-height:1.6 }
+    .post-text.muted{ color:var(--muted) }
+</style>

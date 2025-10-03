@@ -1,0 +1,95 @@
+@using Microsoft.AspNetCore.Components
+@using System.Collections.Generic
+
+<div class="comment-thread">
+  @if (IsLoading && (Root is null || !Root.Any()))
+  {
+    <div class="comment-skel">
+      <div class="skel skel-line"></div>
+      <div class="skel skel-line w-85"></div>
+    </div>
+    <div class="comment-skel">
+      <div class="skel skel-line"></div>
+      <div class="skel skel-line w-85"></div>
+    </div>
+  }
+  else if (Root is not null && Root.Any())
+  {
+    @foreach (var c in Root)
+    {
+      <CommentBlock Id="@c.Id"
+                    AuthorName="@c.AuthorName"
+                    Body="@c.Body"
+                    CreatedAt="@c.CreatedAt"
+                    Score="@c.Score"
+                    MyVote="@c.MyVote"
+                    IsOwn="@c.IsOwn"
+                    CanModerate="@c.CanModerate"
+                    CanReply="CanReply"
+                    MaxChars="@MaxChars"
+                    ChildComments="GetChildren(c.Id)"
+                    OnVote="OnVote"
+                    OnReport="OnReport"
+                    OnReply="OnReply"
+                    OnEdit="OnEdit"
+                    OnDelete="OnDelete" />
+    }
+
+    @if (HasMore)
+    {
+      <div class="list-loadmore">
+        <button type="button" class="btn-ghost" disabled="@IsLoadingMore" @onclick="LoadMore">
+          @if (IsLoadingMore) { <span class="spinner"></span> } Load more comments
+        </button>
+      </div>
+    }
+  }
+  else
+  {
+    <div class="app-card empty-block">
+      <div class="empty-title">No comments yet</div>
+      <div class="empty-sub">Be the first to share your thoughts.</div>
+    </div>
+  }
+</div>
+
+@code{
+  public record CommentVm(
+    int Id, int? ParentId, string AuthorName, string Body, DateTime CreatedAt,
+    int Score, int? MyVote, bool IsOwn, bool CanModerate);
+
+  [Parameter] public IEnumerable<CommentVm>? Items { get; set; } // all comments (flat)
+  [Parameter] public bool IsLoading { get; set; } = false;
+
+  [Parameter] public bool HasMore { get; set; } = false;
+  [Parameter] public bool IsLoadingMore { get; set; } = false;
+  [Parameter] public EventCallback OnLoadMore { get; set; }
+
+  [Parameter] public bool CanReply { get; set; } = true;
+  [Parameter] public int MaxChars { get; set; } = 2000;
+
+  [Parameter] public EventCallback<(int commentId, int value)> OnVote { get; set; }
+  [Parameter] public EventCallback<int> OnReport { get; set; }
+  [Parameter] public EventCallback<(int parentId, string text)> OnReply { get; set; }
+  [Parameter] public EventCallback<(int commentId, string text)> OnEdit { get; set; }
+  [Parameter] public EventCallback<int> OnDelete { get; set; }
+
+  IEnumerable<CommentVm> Root => Items?.Where(c => c.ParentId is null) ?? Enumerable.Empty<CommentVm>();
+
+  IEnumerable<CommentBlock.CommentVm>? GetChildren(int parentId)
+    => Items?
+         .Where(c => c.ParentId == parentId)
+         .Select(c => new CommentBlock.CommentVm(c.Id, c.AuthorName, c.Body, c.CreatedAt, c.Score, c.MyVote, c.IsOwn, c.CanModerate))
+         .ToList();
+
+  Task LoadMore() => OnLoadMore.InvokeAsync();
+}
+
+<style>
+  /* THREAD skeletons */
+  .comment-thread .comment-skel{ padding:12px; border-bottom:1px solid var(--border-color) }
+  .skel-line{ height:14px; width:100%; border-radius:8px;
+    background:linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.12) 37%, rgba(255,255,255,.06) 63%);
+    background-size:400% 100%; animation:shimmer 1.2s ease-in-out infinite; }
+  .w-85{ width:85% } @@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+</style>

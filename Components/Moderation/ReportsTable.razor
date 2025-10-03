@@ -1,0 +1,189 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<div class="reports">
+    <div class="reports-bar">
+        <input class="reports-search" placeholder="Search in reports…" @oninput="OnInput" value="@Search" />
+        <select class="reports-select" @onchange="OnStatusChange">
+            @foreach (var s in StatusOptions)
+            {
+                <option value="@s" selected="@(s==StatusFilter)">@s</option>
+            }
+        </select>
+        <span class="flex"></span>
+        <div class="help">@Total reports</div>
+    </div>
+
+    <div class="app-card">
+        <table class="reports-table">
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Reason</th>
+                    <th>Reporter</th>
+                    <th>When</th>
+                    <th>Status</th>
+                    <th class="col-actions">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Items?.Any() == true)
+                {
+                    @foreach (var r in Items!)
+                    {
+                        <tr>
+                            <td>
+                                <div class="cell-target">
+                                    <span class="chip">@r.TargetType</span>
+                                    <a href="@r.TargetUrl" class="link">@r.TargetTitle</a>
+                                </div>
+                            </td>
+                            <td class="cell-reason">@r.Reason</td>
+                            <td>@r.ReporterName</td>
+                            <td>@TimeAgo(r.CreatedAt)</td>
+                            <td>
+                                <span class="badge @(r.Status=="Open" ? "bdg-open" : r.Status=="Closed" ? "bdg-closed" : "bdg-review")">@r.Status</span>
+                            </td>
+                            <td class="cell-actions">
+                                @if (r.Status != "Closed")
+                                {
+                                    <button type="button" class="btn-ghost" @onclick="() => CloseReport(r.Id)">Close</button>
+                                }
+                                <button type="button" class="btn-ghost" @onclick="() => ReviewReport(r.Id)">Review</button>
+                                @if (r.CanDeleteTarget)
+                                {
+                                    <button type="button" class="btn-ghost danger" @onclick="() => DeleteTarget(r.Id)">Delete target</button>
+                                }
+                                @if (r.CanLockTopic)
+                                {
+                                    <button type="button" class="btn-ghost" @onclick="() => ToggleLock(r.Id, r.TargetTopicLocked)">@(r.TargetTopicLocked ? "Unlock topic" : "Lock topic")</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr><td colspan="6"><div class="help" style="padding:12px">No reports.</div></td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (ShowLoadMore)
+    {
+        <div class="list-loadmore">
+            <button type="button" class="btn-ghost" disabled="@IsLoadingMore" @onclick="LoadMore">
+                @if (IsLoadingMore) { <span class="spinner"></span> } Load more
+            </button>
+        </div>
+    }
+</div>
+
+@code{
+    public record ReportRow(
+        int Id,
+        string TargetType,      // "Post" | "Comment"
+        string TargetTitle,
+        string TargetUrl,
+        string Reason,
+        string ReporterName,
+        DateTime CreatedAt,
+        string Status,          // "Open" | "In Review" | "Closed"
+        bool CanDeleteTarget,
+        bool CanLockTopic,
+        bool TargetTopicLocked
+    );
+
+    [Parameter] public IEnumerable<ReportRow>? Items { get; set; }
+    [Parameter] public string StatusFilter { get; set; } = "Open";
+    [Parameter] public EventCallback<string> StatusFilterChanged { get; set; }
+
+    [Parameter] public string? Search { get; set; }
+    [Parameter] public EventCallback<string?> SearchChanged { get; set; }
+
+    [Parameter] public int Total { get; set; }
+    private string TotalReports => $"{Total} total";
+
+    [Parameter] public bool ShowLoadMore { get; set; } = false;
+    [Parameter] public bool IsLoadingMore { get; set; } = false;
+    [Parameter] public EventCallback OnLoadMore { get; set; }
+
+    [Parameter] public EventCallback<int> OnClose { get; set; }
+    [Parameter] public EventCallback<int> OnReview { get; set; }
+    [Parameter] public EventCallback<int> OnDeleteTarget { get; set; }
+    [Parameter] public EventCallback<(int reportId, bool nextLock)> OnToggleTopicLock { get; set; }
+
+    private static readonly string[] StatusOptions = new[] { "Open", "In Review", "Closed", "All" };
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        await SearchChanged.InvokeAsync(v);
+    }
+
+    private async Task OnStatusChange(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString() ?? "Open";
+        StatusFilter = v;
+        await StatusFilterChanged.InvokeAsync(v);
+    }
+
+    private Task LoadMore() => OnLoadMore.InvokeAsync();
+
+    private Task CloseReport(int id) => Confirm("Close this report?", () => OnClose.InvokeAsync(id));
+    private Task ReviewReport(int id) => OnReview.InvokeAsync(id);
+    private Task DeleteTarget(int id) => Confirm("Delete the reported target?", () => OnDeleteTarget.InvokeAsync(id));
+    private Task ToggleLock(int id, bool locked) => Confirm(locked ? "Unlock topic?" : "Lock topic?", () => OnToggleTopicLock.InvokeAsync((id, !locked)));
+
+    private async Task Confirm(string message, Func<Task> action)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", message);
+        if (ok) await action();
+    }
+
+    private static string TimeAgo(DateTime utc)
+    {
+        var dt = utc.ToLocalTime();
+        var span = DateTime.Now - dt;
+        if (span.TotalSeconds < 60) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays}d";
+        return dt.ToString("yyyy-MM-dd");
+    }
+}
+
+<style>
+    /* REPORTS TABLE */
+    .reports { display: flex; flex-direction: column; gap: 12px; }
+    .reports-bar { display: flex; align-items: center; gap: 8px; }
+    .reports-search {
+        background: var(--surface-2); border: 1px solid var(--border-color);
+        color: var(--text); padding: 8px 12px; border-radius: 10px; line-height: 1;
+    }
+    .reports-select {
+        background: var(--surface-2); border: 1px solid var(--border-color);
+        color: var(--text); padding: 8px 12px; border-radius: 10px;
+    }
+    .reports-table { width: 100%; border-collapse: collapse; }
+    .reports-table th, .reports-table td {
+        border-bottom: 1px solid var(--border-color);
+        padding: 10px;
+        text-align: left;
+        vertical-align: top;
+    }
+    .reports-table thead th { color: var(--muted); font-weight: 600; }
+    .col-actions { width: 360px; }
+    .cell-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .cell-target { display: flex; align-items: center; gap: 6px; }
+    .cell-reason { max-width: 480px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 12px; }
+    .bdg-open { background: var(--warning-light); color: var(--on-warning-light); }
+    .bdg-closed { background: var(--success); color: var(--on-success); }
+    .bdg-review { background: var(--info); color: var(--on-info); }
+
+    .btn-ghost.danger { border-color: var(--danger); color: var(--on-danger); }
+</style>

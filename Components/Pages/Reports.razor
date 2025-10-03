@@ -1,0 +1,108 @@
+@page "/moderation/reports"
+@using LevelForum.Components.Layout
+@using LevelForum.Components.Moderation
+@using LevelForum.Components.Shared
+
+<PageContainer Title="Reports">
+    <ReportsTable Items="@_rows"
+                  StatusFilter="@_status"
+                  StatusFilterChanged="v => _status = v"
+                  Search="@_q"
+                  SearchChanged="v => _q = v"
+                  Total="@_rows.Count"
+                  ShowLoadMore="@_hasMore"
+                  IsLoadingMore="@_loadingMore"
+                  OnLoadMore="LoadMore"
+                  OnClose="CloseReport"
+                  OnReview="ReviewReport"
+                  OnDeleteTarget="DeleteTarget"
+                  OnToggleTopicLock="ToggleTopicLock" />
+</PageContainer>
+
+@code{
+    private string _status = "Open";
+    private string? _q;
+    private bool _hasMore = false;
+    private bool _loadingMore = false;
+
+    private List<ReportsTable.ReportRow> _rows = new();
+
+    protected override void OnInitialized()
+    {
+        _rows.Add(new ReportsTable.ReportRow(
+            Id: 1,
+            TargetType: "Post",
+            TargetTitle: "Welcome to LevelForum",
+            TargetUrl: "/post/101",
+            Reason: "Spam link",
+            ReporterName: "Alice",
+            CreatedAt: DateTime.UtcNow.AddHours(-2),
+            Status: "Open",
+            CanDeleteTarget: true,
+            CanLockTopic: true,
+            TargetTopicLocked: false
+        ));
+        _rows.Add(new ReportsTable.ReportRow(
+            Id: 2,
+            TargetType: "Comment",
+            TargetTitle: "Re: Welcome to LevelForum",
+            TargetUrl: "/post/101#c2",
+            Reason: "Offensive",
+            ReporterName: "Bob",
+            CreatedAt: DateTime.UtcNow.AddHours(-5),
+            Status: "In Review",
+            CanDeleteTarget: true,
+            CanLockTopic: false,
+            TargetTopicLocked: false
+        ));
+    }
+
+    private Task LoadMore()
+    {
+        _loadingMore = true;
+        StateHasChanged();
+        // demo: nothing more
+        _hasMore = false;
+        _loadingMore = false;
+        return Task.CompletedTask;
+    }
+
+    private Task CloseReport(int id)
+    {
+        var idx = _rows.FindIndex(r => r.Id == id);
+        if (idx >= 0)
+        {
+            var row = _rows[idx];
+            _rows[idx] = row with { Status = "Closed" };
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task ReviewReport(int id) => Task.CompletedTask;
+
+    private Task DeleteTarget(int id)
+    {
+        // demo: just close report too
+        var idx = _rows.FindIndex(r => r.Id == id);
+        if (idx >= 0)
+        {
+            var row = _rows[idx];
+            _rows[idx] = row with { Status = "Closed" };
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task ToggleTopicLock((int reportId, bool nextLock) ev)
+    {
+        var idx = _rows.FindIndex(r => r.Id == ev.reportId);
+        if (idx >= 0)
+        {
+            var row = _rows[idx];
+            _rows[idx] = row with { TargetTopicLocked = ev.nextLock };
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+}

@@ -1,5 +1,25 @@
-<h3>AppTextBox</h3>
+@using System.Linq.Expressions
 
-@code {
-    
+<label class="label" for="@_id">@Label</label>
+<InputText id="@_id"
+           class="@($"input {(IsInvalid ? "input--invalid" : null)}")"
+           type="@Type"
+           placeholder="@Placeholder"
+           @bind-Value="Value" />
+@if (!string.IsNullOrEmpty(Help)) { <div class="help">@Help</div> }
+<ValidationMessage For="For">
+    @* <div class="error">@Context</div> *@
+</ValidationMessage>
+
+@code{
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Placeholder { get; set; } = "";
+    [Parameter] public string Type { get; set; } = "text";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<string>>? For { get; set; }
+    [Parameter] public string? Help { get; set; }
+    [CascadingParameter] public EditContext? EditContext { get; set; }
+    string _id = "i" + Guid.NewGuid().ToString("N");
+    bool IsInvalid => false; //EditContext?.GetValidationMessages(For).Any() ?? false;
 }

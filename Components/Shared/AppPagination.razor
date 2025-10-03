@@ -1,5 +1,19 @@
-<h3>AppPagination</h3>
+<div class="pager">
+    <AppButton Variant="ghost" Disabled="@(Page<=1)" OnClick="Prev">‹</AppButton>
+    @foreach (var p in Pages)
+    {
+        <AppButton Variant="ghost" class="@(p==Page?"is-active":null)" OnClick="@(()=>Go(p))">@p</AppButton>
+    }
+    <AppButton Variant="ghost" Disabled="@(Page>=TotalPages)" OnClick="Next">›</AppButton>
+</div>
 
-@code {
-    
+@code{
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int TotalPages { get; set; } = 1;
+    [Parameter] public EventCallback<int> OnChange { get; set; }
+    IEnumerable<int> Pages => Enumerable.Range(Math.Max(1, Page-2), Math.Min(TotalPages,5))
+        .Where(p=>p<=TotalPages);
+    Task Prev()=> OnChange.InvokeAsync(Page-1);
+    Task Next()=> OnChange.InvokeAsync(Page+1);
+    Task Go(int p)=> OnChange.InvokeAsync(p);
 }

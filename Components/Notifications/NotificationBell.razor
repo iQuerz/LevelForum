@@ -1,0 +1,112 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="nbell">
+    <button type="button" class="icon-btn nbell-btn" aria-label="Notifications" @onclick="Toggle">
+        🔔
+        @if (UnreadCount > 0)
+        {
+            <span class="badge">@UnreadCount</span>
+        }
+    </button>
+
+    @if (_open)
+    {
+        <div class="nbell-pop">
+            <div class="nbell-head">
+                <div>Notifications</div>
+                <button type="button" class="link-btn" @onclick="MarkAll">Mark all read</button>
+            </div>
+
+            @if (Items?.Any() == true)
+            {
+                @foreach (var it in Items!.Take(5))
+                {
+                    <a href="@it.Url" class="nbell-item @(it.IsRead ? null : "is-unread")" @onclick="() => ClickItem(it)">
+                        <div class="nbell-text">@it.Text</div>
+                        <div class="nbell-time">@TimeAgo(it.CreatedAt)</div>
+                    </a>
+                }
+                @if (Items!.Count() > 5)
+                {
+                    <a href="/notifications" class="nbell-more">See all</a>
+                }
+            }
+            else
+            {
+                <div class="nbell-empty">No notifications.</div>
+            }
+        </div>
+    }
+</div>
+
+@code{
+    public record NotificationItem(int Id, string Text, DateTime CreatedAt, bool IsRead, string Url);
+
+    [Parameter] public int UnreadCount { get; set; }
+    [Parameter] public IEnumerable<NotificationItem>? Items { get; set; }
+
+    [Parameter] public EventCallback OnOpen { get; set; }
+    [Parameter] public EventCallback<int> OnMarkRead { get; set; }
+    [Parameter] public EventCallback OnMarkAllRead { get; set; }
+
+    private bool _open;
+
+    private async Task Toggle()
+    {
+        _open = !_open;
+        if (_open)
+        {
+            await OnOpen.InvokeAsync();
+        }
+    }
+
+    private async Task ClickItem(NotificationItem it)
+    {
+        if (!it.IsRead)
+        {
+            await OnMarkRead.InvokeAsync(it.Id);
+        }
+        _open = false;
+    }
+
+    private Task MarkAll()
+    {
+        return OnMarkAllRead.InvokeAsync();
+    }
+
+    private static string TimeAgo(DateTime utc)
+    {
+        var dt = utc.ToLocalTime();
+        var span = DateTime.Now - dt;
+        if (span.TotalSeconds < 60) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays}d";
+        return dt.ToString("yyyy-MM-dd");
+    }
+}
+
+<style>
+    /* NOTIFICATION BELL */
+    .nbell { position: relative; }
+    .nbell-btn { position: relative; }
+    .nbell-pop {
+        position: absolute; right: 0; top: 40px; width: 320px;
+        background: var(--surface); color: var(--text);
+        border: 1px solid var(--border-color); border-radius: 10px;
+        box-shadow: 0 12px 38px rgba(0,0,0,.35); overflow: hidden; z-index: 45;
+    }
+    .nbell-head { display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 12px; border-bottom: 1px solid var(--border-color); }
+    .nbell-item {
+        display: block; color: var(--text); text-decoration: none;
+        padding: 10px 12px; border-bottom: 1px solid var(--border-color);
+    }
+    .nbell-item:hover { background: rgba(255,255,255,.06); }
+    .nbell-item.is-unread { background: rgba(79,70,229,.08); }
+    .nbell-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nbell-time { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .nbell-more { display: block; padding: 10px 12px; text-align: center; color: var(--link); }
+    .nbell-empty { padding: 12px; color: var(--muted); }
+
+</style>

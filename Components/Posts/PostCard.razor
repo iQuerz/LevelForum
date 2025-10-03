@@ -1,0 +1,99 @@
+<div class="app-card post-card">
+  <div class="pc-vote">
+    <button type="button"
+            class="vote-btn @(MyVote==1?"up-active":null)"
+            aria-label="Upvote"
+            aria-pressed="@(MyVote==1)"
+            disabled="@VoteDisabled"
+            @onclick="() => Vote(+1)">▲</button>
+
+    <div class="pc-score" aria-live="polite">@Score</div>
+
+    <button type="button"
+            class="vote-btn @(MyVote==-1?"down-active":null)"
+            aria-label="Downvote"
+            aria-pressed="@(MyVote==-1)"
+            disabled="@VoteDisabled"
+            @onclick="() => Vote(-1)">▼</button>
+  </div>
+
+  <div class="pc-body">
+    <a class="pc-title" href="@($"/post/{Id}")">@Title</a>
+
+    <div class="pc-meta">
+      <a class="chip pc-topic" href="@($"/topic/{TopicId}")">@TopicTitle</a>
+      <span class="pc-dot">•</span>
+      <span class="pc-author">@AuthorName</span>
+      <span class="pc-dot">•</span>
+      <time class="pc-time" title="@CreatedAt.ToLocalTime().ToString("g")">@TimeAgo(CreatedAt)</time>
+
+      @if (TopicLocked)
+      {
+        <span class="pc-lock" title="Topic locked">🔒</span>
+      }
+
+      <span class="pc-flex"></span>
+
+      <span class="pc-comments" title="Comments">💬 @CommentsCount</span>
+      <button type="button"
+              class="icon-btn pc-report"
+              title="Report"
+              @onclick="() => OnReport.InvokeAsync(Id)">🚩</button>
+    </div>
+  </div>
+</div>
+
+@code{
+  [Parameter] public int Id { get; set; }
+  [Parameter] public string Title { get; set; } = string.Empty;
+  [Parameter] public int TopicId { get; set; }
+  [Parameter] public string TopicTitle { get; set; } = string.Empty;
+  [Parameter] public string AuthorName { get; set; } = string.Empty;
+  [Parameter] public DateTime CreatedAt { get; set; }
+  [Parameter] public int Score { get; set; }
+  [Parameter] public int? MyVote { get; set; } // -1, 0, +1
+  [Parameter] public int CommentsCount { get; set; }
+  [Parameter] public bool TopicLocked { get; set; }
+  [Parameter] public bool VoteDisabled { get; set; }
+
+  [Parameter] public EventCallback<(int postId, int value)> OnVote { get; set; }
+  [Parameter] public EventCallback<int> OnReport { get; set; }
+
+  Task Vote(int v) => OnVote.InvokeAsync((Id, v));
+
+  static string TimeAgo(DateTime utc)
+  {
+    var dt = utc.ToLocalTime();
+    var span = DateTime.Now - dt;
+    if (span.TotalSeconds < 60) return "just now";
+    if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m";
+    if (span.TotalHours < 24) return $"{(int)span.TotalHours}h";
+    if (span.TotalDays < 7) return $"{(int)span.TotalDays}d";
+    return dt.ToString("yyyy-MM-dd");
+  }
+}
+
+<style>
+  .post-card{ display:flex; gap:12px; padding:12px }
+  .post-card:hover{ box-shadow:0 8px 28px rgba(0,0,0,.25) }
+  .pc-vote{ width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:2px 0 }
+  .vote-btn{ width:36px; height:28px; border-radius:8px; border:1px solid var(--border-color);
+    background:transparent; color:var(--muted); cursor:pointer; line-height:1 }
+  .vote-btn:hover{ background:rgba(255,255,255,.06) }
+  .up-active{ color:var(--primary) }
+  .down-active{ color:var(--danger) }
+  .pc-score{ min-width:28px; text-align:center; font-weight:600; color:var(--text) }
+
+  .pc-body{ flex:1; display:flex; flex-direction:column; gap:6px }
+  .pc-title{ font-size:18px; font-weight:700; color:var(--text) }
+  .pc-title:hover{ color:var(--link-hover); text-decoration:underline }
+  .pc-meta{ display:flex; align-items:center; gap:8px; color:var(--muted) }
+  .pc-dot{ opacity:.7 }
+  .pc-flex{ flex:1 }
+  .pc-topic{ background:var(--surface-2); color:var(--text); border:1px solid var(--border-color) }
+  .pc-lock{ color:var(--warning) }
+  .pc-comments{ color:var(--muted) }
+  .pc-report{ width:32px; height:28px; border-radius:8px; border:1px solid var(--border-color);
+    background:transparent; color:var(--text) }
+  .pc-report:hover{ background:rgba(255,255,255,.06) }
+</style>

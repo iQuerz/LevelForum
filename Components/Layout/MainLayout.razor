@@ -1,23 +1,79 @@
 ﻿@inherits LayoutComponentBase
+@using System.Collections.Generic
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu/>
+<div class="app-shell">
+    <!-- TOPBAR -->
+    <header class="app-topbar-wrap">
+        <AppTopbar Title="@Title"
+                 UnreadCount="@UnreadCount"
+                 OnSearch="HandleSearch"
+                 OnToggleSidebar="ToggleSidebar" />
+    </header>
+
+    <!-- LAYOUT GRID -->
+    <div class="app-shell-grid">
+      <!-- SIDEBAR (desktop mini / mobile drawer) -->
+        <TopicsSidebar Open="@_sidebarOpen"
+                     ActiveTopicId="@ActiveTopicId"
+                     FollowedTopics="@FollowedTopics"
+                     AllTopics="@AllTopics"
+                     OnFollow="HandleFollow"
+                     OnUnfollow="HandleUnfollow"
+                     OnNavigate="HandleNavigate"
+                     OnClose="CloseSidebar" />
+
+        <!-- MAIN CONTENT -->
+        <main class="app-main">
+            <div class="app-main-inner">
+              @Body
+            </div>
+        </main>
     </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
 </div>
 
-<div id="blazor-error-ui">
-    An unhandled error has occurred.
-    <a href="" class="reload">Reload</a>
-    <a class="dismiss">🗙</a>
-</div>
+<style>
+    /* SHELL LAYOUT */
+    .app-shell { min-height:100vh; background:var(--bg, #0f1115); color:var(--text,#e5e7eb); }
+    .app-topbar-wrap { position:sticky; top:0; z-index:50; background:var(--surface,#151923); border-bottom:1px solid rgba(255,255,255,.06); }
+    .app-shell-grid { display:grid; grid-template-columns: 72px 1fr; gap:0; }
+  
+    /* MAIN */
+    .app-main { min-height: calc(100vh - 56px); }
+    .app-main-inner { max-width:1120px; margin:0 auto; padding:16px; }
+  
+    /* Responsive: on small screens the sidebar becomes overlay */
+    @@media (max-width: 960px){
+    .app-shell-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+@code{
+    // Public API (možeš ih setovati kasnije preko DI/state-a ili ostaviti kao default)
+    [Parameter] public string Title { get; set; } = "LevelForum";
+    [Parameter] public int UnreadCount { get; set; } = 0;
+
+    // Sidebar data (za sada prazno – bez servisa; kasnije ćeš puniti iz DB-a)
+    [Parameter] public IEnumerable<TopicsSidebar.TopicItem> FollowedTopics { get; set; } = [];
+    [Parameter] public IEnumerable<TopicsSidebar.TopicItem> AllTopics { get; set; } = [];
+    [Parameter] public int? ActiveTopicId { get; set; }
+
+    // Bubble-up events (po potrebi ih zakačiš na app-level)
+    [Parameter] public EventCallback<string?> OnSearch { get; set; }
+    [Parameter] public EventCallback<int> OnNavigateTopic { get; set; }
+    [Parameter] public EventCallback<int> OnFollowTopic { get; set; }
+    [Parameter] public EventCallback<int> OnUnfollowTopic { get; set; }
+
+    bool _sidebarOpen; // mobile drawer state
+
+    void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+    void CloseSidebar() => _sidebarOpen = false;
+
+    Task HandleSearch(string? q) => OnSearch.InvokeAsync(q);
+    Task HandleNavigate(int topicId)
+    {
+      CloseSidebar();
+      return OnNavigateTopic.InvokeAsync(topicId);
+    }
+    Task HandleFollow(int topicId) => OnFollowTopic.InvokeAsync(topicId);
+    Task HandleUnfollow(int topicId) => OnUnfollowTopic.InvokeAsync(topicId);
+}

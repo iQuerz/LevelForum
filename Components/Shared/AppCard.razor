@@ -1,5 +1,11 @@
-<h3>AppCard</h3>
+<div class="app-card">
+    @if (Header is not null) { <div class="app-card__header">@Header</div> }
+    <div class="app-card__body">@ChildContent</div>
+    @if (Footer is not null) { <div class="app-card__footer">@Footer</div> }
+</div>
 
-@code {
-    
+@code{
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
 }

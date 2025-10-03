@@ -1,0 +1,82 @@
+@using System.Timers
+
+<div class="list-toolbar">
+  <div class="ltb-row">
+    <input class="ltb-search"
+           placeholder="Search…"
+           @oninput="OnInput"
+           value="@SearchValue"
+           aria-label="Search" />
+  </div>
+
+  <div class="ltb-row ltb-actions">
+    @foreach (var opt in SortOptions)
+    {
+      <button type="button"
+              class="sort-btn @(SortValue==opt.Value ? "is-active" : null)"
+              aria-pressed="@(SortValue==opt.Value)"
+              @onclick="() => ChangeSort(opt.Value)">
+        @opt.Label
+      </button>
+    }
+    @if (ShowFilter)
+    {
+      @* prostor za tvoj dodatni filter (dropdown/checkbox grupa) *@
+      <div class="ltb-filter">
+        @FilterContent
+      </div>
+    }
+  </div>
+</div>
+
+@code{
+  public record SortOption(string Value, string Label);
+
+  [Parameter] public string? SearchValue { get; set; }
+  [Parameter] public EventCallback<string?> SearchValueChanged { get; set; }
+  [Parameter] public EventCallback<string?> OnSearch { get; set; }
+
+  [Parameter] public string SortValue { get; set; } = "new";
+  [Parameter] public EventCallback<string> SortValueChanged { get; set; }
+  [Parameter] public IEnumerable<SortOption> SortOptions { get; set; } =
+    new[] { new SortOption("new","New"), new SortOption("top","Top"), new SortOption("active","Active") };
+
+  [Parameter] public bool ShowFilter { get; set; } = false;
+  [Parameter] public RenderFragment? FilterContent { get; set; }
+
+  Timer? _debounce;
+
+  async Task OnInput(ChangeEventArgs e)
+  {
+    SearchValue = e.Value?.ToString();
+    await SearchValueChanged.InvokeAsync(SearchValue);
+
+    _debounce?.Stop();
+    _debounce ??= new Timer(250){ AutoReset = false };
+    _debounce.Elapsed += async (_,__) => await InvokeAsync(() => OnSearch.InvokeAsync(SearchValue));
+    _debounce.Start();
+  }
+
+  async Task ChangeSort(string v)
+  {
+    if (SortValue == v) return;
+    SortValue = v;
+    await SortValueChanged.InvokeAsync(v);
+    await OnSearch.InvokeAsync(SearchValue); // opcionalno: re-fetch uz aktuelni query
+  }
+}
+
+<style>
+  .list-toolbar{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px }
+  .list-toolbar .ltb-row{ display:flex; gap:8px; align-items:center }
+  .ltb-search{ width:min(520px,100%); background:var(--surface-2); border:1px solid var(--border-color);
+    color:var(--text); padding:8px 12px; border-radius:10px; line-height:1 }
+  .ltb-search::placeholder{ color:var(--muted) }
+  .ltb-search:focus{ outline:none; box-shadow:var(--ring-shadow) }
+  .ltb-actions{ margin-left:auto }
+  .sort-btn{ border:1px solid var(--border-color); background:transparent; color:var(--text);
+    border-radius:999px; padding:6px 12px; cursor:pointer }
+  .sort-btn:hover{ background:rgba(255,255,255,.06) }
+  .sort-btn.is-active{ background:var(--primary); color:var(--on-primary); border-color:transparent }
+  .ltb-filter{ margin-left:8px }
+</style>

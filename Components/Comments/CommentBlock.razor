@@ -1,0 +1,223 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="comment @(Depth>0 ? "comment-child" : null)">
+  <div class="c-vote">
+    <button type="button"
+            class="vote-btn @(MyVote==1?"up-active":null)"
+            aria-label="Upvote comment"
+            aria-pressed="@(MyVote==1)"
+            @onclick="() => Vote(+1)">▲</button>
+
+    <div class="c-score" aria-live="polite">@Score</div>
+
+    <button type="button"
+            class="vote-btn @(MyVote==-1?"down-active":null)"
+            aria-label="Downvote comment"
+            aria-pressed="@(MyVote==-1)"
+            @onclick="() => Vote(-1)">▼</button>
+  </div>
+
+  <div class="c-main">
+    <div class="c-header">
+      <div class="c-avatar">@Initials(AuthorName)</div>
+      <div class="c-meta">
+        <span class="c-author">@AuthorName</span>
+        <span class="c-dot">•</span>
+        <time class="c-time" title="@CreatedAt.ToLocalTime().ToString("g")">@TimeAgo(CreatedAt)</time>
+      </div>
+      <span class="c-flex"></span>
+      <button type="button" class="icon-btn" title="Report" @onclick="() => OnReport.InvokeAsync(Id)">🚩</button>
+      @if (IsOwn || CanModerate)
+      {
+        <div class="c-menu">
+          <button type="button" class="icon-btn" aria-expanded="@_menuOpen" aria-haspopup="menu" @onclick="() => _menuOpen=!_menuOpen">⋮</button>
+          @if (_menuOpen)
+          {
+            <div class="c-menu-pop" role="menu">
+              @if (IsOwn)
+              {
+                <button type="button" class="c-menu-item" role="menuitem" @onclick="StartEdit">Edit</button>
+                <button type="button" class="c-menu-item danger" role="menuitem" @onclick="() => OnDelete.InvokeAsync(Id)">Delete</button>
+              }
+              @if (CanModerate && !IsOwn)
+              {
+                <button type="button" class="c-menu-item danger" role="menuitem" @onclick="() => OnDelete.InvokeAsync(Id)">Remove</button>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    @if (_editing)
+    {
+      <div class="c-editor">
+        <textarea class="composer-input" maxlength="@MaxChars" @oninput="e => _editText = e.Value?.ToString()" value="@_editText"></textarea>
+        <div class="composer-bar">
+          <div class="composer-count">@(_editText?.Length ?? 0)/@MaxChars</div>
+          <div class="composer-actions">
+            <button type="button" class="btn-ghost" @onclick="CancelEdit">Cancel</button>
+            <button type="button" class="btn-primary" disabled="@string.IsNullOrWhiteSpace(_editText)" @onclick="SaveEdit">Save</button>
+          </div>
+        </div>
+      </div>
+    }
+    else
+    {
+      <div class="c-text">@Body</div>
+    }
+
+    <div class="c-actions">
+      @if (CanReply)
+      {
+        <button type="button" class="link-btn" @onclick="ToggleReply">Reply</button>
+      }
+    </div>
+
+    @if (_replying)
+    {
+      <div class="c-reply">
+        <CommentComposer CanPost="true"
+                         Placeholder="Write a reply…"
+                         MaxChars="@MaxChars"
+                         ShowCancel="true"
+                         OnCancel="ToggleReply"
+                         OnSubmit="SubmitReply" />
+      </div>
+    }
+
+    @if (ChildComments?.Any() == true)
+    {
+      <div class="c-children">
+        @foreach (var ch in ChildComments!)
+        {
+          <CommentBlock Id="@ch.Id"
+                        AuthorName="@ch.AuthorName"
+                        Body="@ch.Body"
+                        CreatedAt="@ch.CreatedAt"
+                        Score="@ch.Score"
+                        MyVote="@ch.MyVote"
+                        IsOwn="@ch.IsOwn"
+                        CanModerate="@ch.CanModerate"
+                        CanReply="false"
+                        Depth="@(Depth+1)"
+                        MaxChars="@MaxChars"
+                        OnVote="OnVote"
+                        OnReport="OnReport"
+                        OnReply="OnReply"
+                        OnEdit="OnEdit"
+                        OnDelete="OnDelete" />
+        }
+      </div>
+    }
+  </div>
+</div>
+
+@code{
+  [Parameter] public int Id { get; set; }
+  [Parameter] public string AuthorName { get; set; } = string.Empty;
+  [Parameter] public string Body { get; set; } = string.Empty;
+  [Parameter] public DateTime CreatedAt { get; set; }
+  [Parameter] public int Score { get; set; }
+  [Parameter] public int? MyVote { get; set; } // -1/0/+1
+  [Parameter] public bool IsOwn { get; set; } = false;
+  [Parameter] public bool CanModerate { get; set; } = false;
+  [Parameter] public bool CanReply { get; set; } = true;
+  [Parameter] public int Depth { get; set; } = 0; // 0=root, 1=child
+  [Parameter] public int MaxChars { get; set; } = 2000;
+
+  [Parameter] public IEnumerable<CommentVm>? ChildComments { get; set; }
+
+  [Parameter] public EventCallback<(int commentId, int value)> OnVote { get; set; }
+  [Parameter] public EventCallback<int> OnReport { get; set; }
+  [Parameter] public EventCallback<(int parentId, string text)> OnReply { get; set; }
+  [Parameter] public EventCallback<(int commentId, string text)> OnEdit { get; set; }
+  [Parameter] public EventCallback<int> OnDelete { get; set; }
+
+  bool _replying;
+  bool _editing;
+  string? _editText;
+  bool _menuOpen;
+
+  Task Vote(int v) => OnVote.InvokeAsync((Id, v));
+
+  void ToggleReply() => _replying = !_replying;
+
+  Task SubmitReply(string text)
+  {
+    _replying = false;
+    return OnReply.InvokeAsync((Id, text));
+  }
+
+  void StartEdit()
+  {
+    _editing = true;
+    _menuOpen = false;
+    _editText = Body;
+  }
+
+  void CancelEdit() => _editing = false;
+
+  Task SaveEdit()
+  {
+    _editing = false;
+    return OnEdit.InvokeAsync((Id, _editText ?? string.Empty));
+  }
+
+  static string Initials(string name)
+  {
+    if (string.IsNullOrWhiteSpace(name)) return "??";
+    var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    var letters = parts.Take(2).Select(p => char.ToUpperInvariant(p[0]));
+    return new string(letters.ToArray());
+  }
+
+  static string TimeAgo(DateTime utc)
+  {
+    var dt = utc.ToLocalTime();
+    var span = DateTime.Now - dt;
+    if (span.TotalSeconds < 60) return "just now";
+    if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m";
+    if (span.TotalHours < 24) return $"{(int)span.TotalHours}h";
+    if (span.TotalDays < 7) return $"{(int)span.TotalDays}d";
+    return dt.ToString("yyyy-MM-dd");
+  }
+
+  public record CommentVm(
+    int Id, string AuthorName, string Body, DateTime CreatedAt,
+    int Score, int? MyVote, bool IsOwn, bool CanModerate);
+}
+
+<style>
+  /* COMMENT */
+  .comment{ display:flex; gap:10px; padding:12px; border-bottom:1px solid var(--border-color) }
+  .comment-child{ background:rgba(255,255,255,.02); border-left:3px solid rgba(255,255,255,.08) }
+
+  .c-vote{ width:46px; display:flex; flex-direction:column; align-items:center; gap:4px }
+  .c-score{ min-width:24px; text-align:center; font-weight:600; color:var(--text) }
+
+  .c-main{ flex:1; display:flex; flex-direction:column; gap:6px }
+  .c-header{ display:flex; align-items:center; gap:8px }
+  .c-avatar{ width:28px; height:28px; border-radius:50%; background:var(--surface-2);
+    display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--text) }
+  .c-meta{ display:flex; align-items:center; gap:6px; color:var(--muted) }
+  .c-author{ color:var(--text) } .c-dot{ opacity:.7 } .c-flex{ flex:1 }
+
+  .c-menu{ position:relative }
+  .c-menu-pop{ position:absolute; right:0; top:28px; min-width:140px; background:var(--surface);
+    border:1px solid var(--border-color); border-radius:10px; box-shadow:0 12px 40px rgba(0,0,0,.35); padding:6px; z-index:20 }
+  .c-menu-item{ width:100%; text-align:left; background:transparent; border:none; color:var(--text);
+    padding:8px 10px; border-radius:8px; cursor:pointer }
+  .c-menu-item:hover{ background:rgba(255,255,255,.06) }
+  .c-menu-item.danger{ color:var(--on-danger); background:var(--danger) }
+
+  .c-text{ color:var(--text); white-space:pre-wrap; line-height:1.5 }
+  .c-actions{ display:flex; gap:10px }
+  .link-btn{ background:transparent; border:none; color:var(--link); cursor:pointer; padding:0 }
+  .link-btn:hover{ color:var(--link-hover); text-decoration:underline }
+
+
+  /* Reply area and children */
+  .c-reply{ margin-top:6px }
+  .c-children{ margin-top:6px; display:flex; flex-direction:column; gap:0 }
+</style>

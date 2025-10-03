@@ -1,5 +1,71 @@
-<h3>AppSelect</h3>
+@using System.Linq.Expressions
+@using Microsoft.AspNetCore.Components.Forms
+@typeparam T
 
-@code {
-    
+<label class="label" for="@_id">@Label</label>
+
+<InputSelect id="@_id"
+             class="@($"input {(IsInvalid ? "input--invalid" : null)}")"
+             @bind-Value="Value"
+             disabled="@Disabled"
+             aria-invalid="@(IsInvalid ? "true" : "false")"
+             aria-describedby="@(_errorId)"
+             @attributes="AdditionalAttributes">
+
+    @if (ShowPlaceholder)
+    {
+        <option value="" disabled="@Required" selected="@(Value is null)">@Placeholder</option>
+    }
+
+    @if (Items is not null)
+    {
+        @foreach (var it in Items)
+        {
+            <option value="@BindConverter.FormatValue(it.Value)" disabled="@it.Disabled">@it.Label</option>
+        }
+    }
+</InputSelect>
+
+@if (For is not null)
+{
+    <ValidationMessage For="For">
+        @* <div id="@_errorId" class="error">@context</div> *@
+    </ValidationMessage>
+}
+
+@code{
+    public sealed record Option(T? Value, string Label, bool Disabled = false);
+
+    // UI
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Required { get; set; } = false;
+    [Parameter] public bool Disabled { get; set; } = false;
+
+    // Vrednost (napomena: T je nullable da bi placeholder radio bez greške kod value tipova)
+    [Parameter] public T? Value { get; set; }
+    [Parameter] public EventCallback<T?> ValueChanged { get; set; }
+
+    // Validacija / vezivanje na model (isti izraz koristi i InputSelect i ValidationMessage)
+    [Parameter] public Expression<Func<T?>>? For { get; set; }
+
+    // Stavke
+    [Parameter] public IEnumerable<Option>? Items { get; set; }
+
+    // Dodatni HTML atributi (name, data-*, itd.)
+    [Parameter] public IDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // EditContext dobijamo kaskadno da bismo izračunali invalid stanje
+    [CascadingParameter] public EditContext? EditContext { get; set; }
+
+    string _id = "sel_" + Guid.NewGuid().ToString("N");
+    string _errorId => _id + "_err";
+
+    bool IsInvalid
+        => For is not null
+           && EditContext is not null
+           && EditContext.GetValidationMessages(FieldIdentifier.Create(For)).Any();
+
+    bool ShowPlaceholder
+        => !string.IsNullOrEmpty(Placeholder) && !Required;
 }

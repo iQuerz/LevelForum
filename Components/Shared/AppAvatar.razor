@@ -1,5 +1,11 @@
-<h3>AppAvatar</h3>
+<div style="width:@Size;height:@Size;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+            background:@Bg; color:white; font-weight:600;">
+    @Initials
+</div>
 
-@code {
-    
+@code{
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string Size { get; set; } = "32px";
+    string Initials => string.Join("", Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(s=>char.ToUpperInvariant(s[0])));
+    string Bg { get { var h = (uint)Name.Aggregate(0,(a,c)=>a*31 + c); var hue = h % 360; return $"hsl({hue},60%,45%)"; } }
 }

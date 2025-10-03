@@ -1,5 +1,22 @@
-<h3>AppTextArea</h3>
+@using System.Linq.Expressions
+@using Microsoft.AspNetCore.Components.Forms
+<label class="label" for="@_id">@Label</label>
+<InputTextArea id="@_id"
+               class="@($"input {(IsInvalid? "input--invalid": null)}")"
+               rows="@Rows"
+               placeholder="@Placeholder"
+               @bind-Value="Value"/>
+@if (!string.IsNullOrEmpty(Help)) { <div class="help">@Help</div> }
+@* <ValidationMessage For="For"><div class="error">@context</div></ValidationMessage> *@
 
-@code {
-    
+@code{
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public int Rows { get; set; } = 6;
+    [Parameter] public string Placeholder { get; set; } = "";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Help { get; set; }
+    [CascadingParameter] public EditContext? EditContext { get; set; }
+    string _id = "t" + Guid.NewGuid().ToString("N");
+    bool IsInvalid => false; //EditContext?.GetValidationMessages(For).Any() ?? false;
 }

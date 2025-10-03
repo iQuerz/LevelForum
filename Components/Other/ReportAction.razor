@@ -1,0 +1,126 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="report-action">
+    <button type="button" class="icon-btn" title="Report" @onclick="Open">🚩</button>
+
+    @if (_open)
+    {
+        <div class="ra-overlay" @onclick="Close">
+            <div class="ra-modal" @onclick:stopPropagation="true">
+                <div class="ra-header">
+                    <div class="ra-title">Report @TargetLabel</div>
+                    <button type="button" class="icon-btn" aria-label="Close" @onclick="Close">✕</button>
+                </div>
+
+                <div class="ra-body">
+                    <textarea class="ra-input"
+                              placeholder="Brief reason (max @MaxLength chars)…"
+                              maxlength="@MaxLength"
+                              @oninput="OnInput"
+                              value="@_text"></textarea>
+                    <div class="ra-count">@(_text?.Length ?? 0)/@MaxLength</div>
+                </div>
+
+                <div class="ra-footer">
+                    <button type="button" class="btn-ghost" @onclick="Close">Cancel</button>
+                    <button type="button" class="btn-primary" disabled="@IsDisabled" @onclick="Submit">Submit</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code{
+    [Parameter] public string TargetLabel { get; set; } = "item"; // "post" or "comment"
+    [Parameter] public int TargetId { get; set; }
+    [Parameter] public int MaxLength { get; set; } = 300;
+    [Parameter] public EventCallback<(int targetId, string reason)> OnSubmit { get; set; }
+
+    private bool _open;
+    private string? _text;
+
+    private void Open() => _open = true;
+    private void Close()
+    {
+        _open = false;
+        _text = null;
+    }
+
+    private void OnInput(ChangeEventArgs e) => _text = e.Value?.ToString();
+
+    private bool IsDisabled => string.IsNullOrWhiteSpace(_text);
+
+    private async Task Submit()
+    {
+        if (IsDisabled) return;
+        await OnSubmit.InvokeAsync((TargetId, _text!.Trim()));
+        Close();
+    }
+}
+
+<style>
+    /* report action modal */
+    .ra-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 80;
+    }
+    .ra-modal {
+        width: min(560px, 92vw);
+        background: var(--surface);
+        color: var(--text);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    }
+    .ra-header, .ra-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .ra-footer { border-bottom: none; border-top: 1px solid var(--border-color); }
+    .ra-title { font-weight: 700; }
+    .ra-body { padding: 12px; }
+    .ra-input {
+        width: 100%;
+        min-height: 100px;
+        background: var(--surface-2);
+        color: var(--text);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 8px 10px;
+        resize: vertical;
+    }
+    .ra-input:focus { outline: none; box-shadow: var(--ring-shadow); }
+    .ra-count {
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--muted);
+    }
+
+    /* small buttons reused in modal */
+    .btn-primary {
+        background: var(--primary);
+        color: var(--on-primary);
+        border: 1px solid transparent;
+        border-radius: 10px;
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-ghost {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,.06); }
+</style>

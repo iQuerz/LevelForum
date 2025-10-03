@@ -1,10 +1,19 @@
-﻿@page "/"
+@page "/topic/{Id:int}"
 @using LevelForum.Components.Layout
 @using LevelForum.Components.Posts
+@using LevelForum.Components.Other
 @using LevelForum.Components.Shared
-@inject NavigationManager Nav
 
-<PageContainer Title="Home">
+<PageContainer Title="@_title">
+    <div class="app-card" style="padding:12px; display:flex; gap:8px; align-items:center;">
+        <span class="chip">@_title</span>
+        <FollowToggle IsFollowed="@_followed" OnChange="v => _followed = v" />
+        <span style="flex:1"></span>
+        <LockToggle Locked="@_locked" OnToggle="v => _locked = v" />
+    </div>
+
+    <div style="height:8px"></div>
+
     <ListToolbar SearchValue="@_q"
                  SearchValueChanged="v => _q = v"
                  OnSearch="DoSearch"
@@ -21,6 +30,12 @@
 </PageContainer>
 
 @code{
+    [Parameter] public int Id { get; set; }
+
+    private string _title = "Topic";
+    private bool _followed = true;
+    private bool _locked = false;
+
     private string? _q;
     private string _sort = "new";
     private bool _loading = true;
@@ -29,31 +44,33 @@
 
     private List<PostList.PostListItem> _items = new();
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
-        // init fake data
-        for (int i = 1; i <= 8; i++)
+        _title = Id switch { 1 => "General", 2 => "News", _ => $"Topic {Id}" };
+        if (_items.Count == 0)
         {
-            _items.Add(new PostList.PostListItem(
-                Id: i,
-                Title: $"Welcome post #{i}",
-                TopicId: 1,
-                TopicTitle: "General",
-                AuthorName: "Alice",
-                CreatedAt: DateTime.UtcNow.AddMinutes(-5 * i),
-                Score: 10 - i,
-                MyVote: 0,
-                CommentsCount: 3 + i,
-                TopicLocked: false,
-                VoteDisabled: false
-            ));
+            for (int i = 1; i <= 6; i++)
+            {
+                _items.Add(new PostList.PostListItem(
+                    Id: Id * 100 + i,
+                    Title: $"Post in {_title} #{i}",
+                    TopicId: Id,
+                    TopicTitle: _title,
+                    AuthorName: "User",
+                    CreatedAt: DateTime.UtcNow.AddMinutes(-7 * i),
+                    Score: i % 9,
+                    MyVote: 0,
+                    CommentsCount: i + 1,
+                    TopicLocked: _locked,
+                    VoteDisabled: false
+                ));
+            }
+            _loading = false;
         }
-        _loading = false;
     }
 
     private Task DoSearch(string? q)
     {
-        // minimal demo: reset list
         _loading = true;
         StateHasChanged();
         _items = _items
@@ -67,25 +84,25 @@
     {
         _loadingMore = true;
         StateHasChanged();
-        await Task.Delay(300);
+        await Task.Delay(250);
         var start = _items.Count + 1;
-        for (int i = start; i < start + 5; i++)
+        for (int i = start; i < start + 4; i++)
         {
             _items.Add(new PostList.PostListItem(
-                Id: i,
-                Title: $"More post #{i}",
-                TopicId: 2,
-                TopicTitle: "News",
-                AuthorName: "Bob",
-                CreatedAt: DateTime.UtcNow.AddMinutes(-3 * i),
-                Score: i % 5,
+                Id: Id * 100 + i,
+                Title: $"More in {_title} #{i}",
+                TopicId: Id,
+                TopicTitle: _title,
+                AuthorName: "User",
+                CreatedAt: DateTime.UtcNow.AddMinutes(-6 * i),
+                Score: (i * 2) % 10,
                 MyVote: 0,
-                CommentsCount: i % 7,
-                TopicLocked: false,
+                CommentsCount: i % 5,
+                TopicLocked: _locked,
                 VoteDisabled: false
             ));
         }
-        _hasMore = _items.Count < 30;
+        _hasMore = _items.Count < 24;
         _loadingMore = false;
     }
 
@@ -103,10 +120,5 @@
         return Task.CompletedTask;
     }
 
-    private Task HandleReport(int postId)
-    {
-        // minimal: navigate to reports page or show alert later
-        Nav.NavigateTo($"/post/{postId}");
-        return Task.CompletedTask;
-    }
+    private Task HandleReport(int postId) => Task.CompletedTask;
 }

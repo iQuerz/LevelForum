@@ -1,5 +1,18 @@
-<h3>AppSearchBox</h3>
-
-@code {
-    
+<input class="input" placeholder="@Placeholder" @oninput="OnInput" value="@Value" />
+@code{
+    [Parameter] public string Placeholder { get; set; } = "Search…";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public EventCallback<string?> OnDebounced { get; set; }
+    [Parameter] public int DelayMs { get; set; } = 250;
+    System.Timers.Timer? _timer;
+    async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString();
+        await ValueChanged.InvokeAsync(Value);
+        _timer?.Stop();
+        _timer ??= new System.Timers.Timer(DelayMs){ AutoReset=false };
+        _timer.Elapsed += async (_,__) => await OnDebounced.InvokeAsync(Value);
+        _timer.Start();
+    }
 }

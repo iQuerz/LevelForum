@@ -1,0 +1,69 @@
+@using Microsoft.AspNetCore.Components
+
+<div class="notifs">
+    <div class="notifs-bar">
+        <label class="chk">
+            <input type="checkbox" checked="@UnreadOnly" @onchange="OnToggleUnread" />
+            <span>Unread only</span>
+        </label>
+        <span class="flex"></span>
+        <button type="button" class="btn-ghost" @onclick="MarkAll">Mark all read</button>
+    </div>
+
+    @if (Items?.Any() == true)
+    {
+        @foreach (var it in Items!)
+        {
+            <a class="notif-row @(it.IsRead ? null : "is-unread")" href="@it.Url" @onclick="() => ClickItem(it)">
+                <div class="notif-text">@it.Text</div>
+                <div class="notif-meta">
+                    <span class="notif-time">@TimeAgo(it.CreatedAt)</span>
+                    @if (!it.IsRead) { <span class="badge-dot"></span> }
+                </div>
+            </a>
+        }
+    }
+    else
+    {
+        <div class="app-card empty-block">
+            <div class="empty-title">No notifications</div>
+            <div class="empty-sub">You are all caught up.</div>
+        </div>
+    }
+</div>
+
+@code{
+    public record NotificationItem(int Id, string Text, DateTime CreatedAt, bool IsRead, string Url);
+
+    [Parameter] public IEnumerable<NotificationItem>? Items { get; set; }
+    [Parameter] public bool UnreadOnly { get; set; } = false;
+
+    [Parameter] public EventCallback<bool> UnreadOnlyChanged { get; set; }
+    [Parameter] public EventCallback OnMarkAllRead { get; set; }
+    [Parameter] public EventCallback<int> OnMarkRead { get; set; }
+
+    private async Task OnToggleUnread(ChangeEventArgs e)
+    {
+        UnreadOnly = e.Value is bool b && b;
+        await UnreadOnlyChanged.InvokeAsync(UnreadOnly);
+    }
+
+    private Task MarkAll() => OnMarkAllRead.InvokeAsync();
+
+    private Task ClickItem(NotificationItem it)
+    {
+        if (!it.IsRead) return OnMarkRead.InvokeAsync(it.Id);
+        return Task.CompletedTask;
+    }
+
+    private static string TimeAgo(DateTime utc)
+    {
+        var dt = utc.ToLocalTime();
+        var span = DateTime.Now - dt;
+        if (span.TotalSeconds < 60) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h";
+        if (span.TotalDays < 7) return $"{(int)span.TotalDays}d";
+        return dt.ToString("yyyy-MM-dd");
+    }
+}

@@ -1,0 +1,47 @@
+@page "/notifications"
+@using LevelForum.Components.Layout
+@using LevelForum.Components.Notifications
+@using LevelForum.Components.Shared
+
+<PageContainer Title="Notifications">
+    <NotificationsList Items="@_items"
+                       UnreadOnly="@_unreadOnly"
+                       UnreadOnlyChanged="v => _unreadOnly = v"
+                       OnMarkAllRead="MarkAll"
+                       OnMarkRead="MarkRead" />
+</PageContainer>
+
+@code{
+    private bool _unreadOnly = false;
+    private List<NotificationsList.NotificationItem> _items = new();
+
+    protected override void OnInitialized()
+    {
+        _items.Add(new NotificationsList.NotificationItem(1, "Alice replied to your comment", DateTime.UtcNow.AddMinutes(-10), false, "/post/101#c1"));
+        _items.Add(new NotificationsList.NotificationItem(2, "Bob replied to your comment", DateTime.UtcNow.AddHours(-3), true, "/post/102#c2"));
+        _items.Add(new NotificationsList.NotificationItem(3, "Carla replied to your comment", DateTime.UtcNow.AddDays(-1), false, "/post/103#c3"));
+    }
+
+    private Task MarkAll()
+    {
+        for (int i = 0; i < _items.Count; i++)
+        {
+            var it = _items[i];
+            _items[i] = it with { IsRead = true };
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task MarkRead(int id)
+    {
+        var idx = _items.FindIndex(n => n.Id == id);
+        if (idx >= 0)
+        {
+            var it = _items[idx];
+            _items[idx] = it with { IsRead = true };
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    }
+}
