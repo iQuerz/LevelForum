@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using LevelForum.Components;
 using LevelForum.Components.Account;
 using LevelForum.Data;
+using LevelForum.Data.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,18 +24,8 @@ builder.Services.AddAuthentication(options =>
     })
     .AddIdentityCookies();
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ??
-                       throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
-builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-
-builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
-    .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddSignInManager()
-    .AddDefaultTokenProviders();
-
-builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+Database.Register(builder);
+Services.Register(builder);
 
 var app = builder.Build();
 

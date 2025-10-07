@@ -15,6 +15,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<Vote> Votes => Set<Vote>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<AppError> AppErrors => Set<AppError>();
     
     protected override void OnModelCreating(ModelBuilder b)
     {
