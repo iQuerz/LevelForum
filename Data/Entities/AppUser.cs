@@ -10,6 +10,7 @@ public class AppUser : _IdentifiableEntity
     public string PasswordHash { get; set; }
 
     public AppRole GlobalRole { get; set; }
+    public List<AppUserTopicRole> UserTopicRoles { get; set; }
     
     public int Experience { get; set; }
     

@@ -14,6 +14,8 @@ public class Topic : _IdentifiableEntity
     public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
     
     [ForeignKey(nameof(CreatedById))]
-    public AppUser CreatedBy { get; set; }
-    public int CreatedById { get; set; }
+    public AppUser? CreatedBy { get; set; } = null;
+    public int? CreatedById { get; set; } = null;
+    
+    public List<AppUserTopicRole> UserRoles { get; set; }
 }

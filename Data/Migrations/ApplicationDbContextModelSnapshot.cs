@@ -65,7 +65,7 @@ namespace LevelForum.Data.Migrations
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("Experience")
                         .HasColumnType("int");
@@ -82,9 +82,15 @@ namespace LevelForum.Data.Migrations
 
                     b.Property<string>("Username")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("Username")
+                        .IsUnique();
 
                     b.ToTable("AppUsers");
                 });
@@ -254,7 +260,7 @@ namespace LevelForum.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("CreatedById")
+                    b.Property<int?>("CreatedById")
                         .HasColumnType("int");
 
                     b.Property<string>("Description")
@@ -304,7 +310,8 @@ namespace LevelForum.Data.Migrations
 
                     b.HasIndex("TopicId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "TopicId")
+                        .IsUnique();
 
                     b.ToTable("TopicFollows");
                 });
@@ -325,7 +332,7 @@ namespace LevelForum.Data.Migrations
 
                     b.Property<string>("TargetType")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
@@ -335,28 +342,29 @@ namespace LevelForum.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "TargetType", "TargetId")
+                        .IsUnique();
 
                     b.ToTable("Votes");
                 });
 
             modelBuilder.Entity("LevelForum.Data.Entities.AppUserTopicRole", b =>
                 {
-                    b.HasOne("LevelForum.Data.Entities.AppUser", "User")
-                        .WithMany()
+                    b.HasOne("LevelForum.Data.Entities.AppUser", "AppUser")
+                        .WithMany("UserTopicRoles")
                         .HasForeignKey("AppUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("LevelForum.Data.Entities.Topic", "Topic")
-                        .WithMany()
+                        .WithMany("UserRoles")
                         .HasForeignKey("TopicId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Topic");
+                    b.Navigation("AppUser");
 
-                    b.Navigation("User");
+                    b.Navigation("Topic");
                 });
 
             modelBuilder.Entity("LevelForum.Data.Entities.Comment", b =>
@@ -364,12 +372,13 @@ namespace LevelForum.Data.Migrations
                     b.HasOne("LevelForum.Data.Entities.AppUser", "Author")
                         .WithMany()
                         .HasForeignKey("AuthorId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("LevelForum.Data.Entities.Comment", "ParentComment")
                         .WithMany()
-                        .HasForeignKey("ParentCommentId");
+                        .HasForeignKey("ParentCommentId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("LevelForum.Data.Entities.Post", "Post")
                         .WithMany()
@@ -389,7 +398,7 @@ namespace LevelForum.Data.Migrations
                     b.HasOne("LevelForum.Data.Entities.AppUser", "Author")
                         .WithMany()
                         .HasForeignKey("AuthorId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("LevelForum.Data.Entities.Topic", "Topic")
@@ -425,8 +434,7 @@ namespace LevelForum.Data.Migrations
                     b.HasOne("LevelForum.Data.Entities.AppUser", "CreatedBy")
                         .WithMany()
                         .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("CreatedBy");
                 });
@@ -459,6 +467,16 @@ namespace LevelForum.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("LevelForum.Data.Entities.AppUser", b =>
+                {
+                    b.Navigation("UserTopicRoles");
+                });
+
+            modelBuilder.Entity("LevelForum.Data.Entities.Topic", b =>
+                {
+                    b.Navigation("UserRoles");
                 });
 #pragma warning restore 612, 618
         }
