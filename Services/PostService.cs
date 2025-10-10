@@ -55,7 +55,10 @@ public sealed class PostService
         => _safe.ExecuteAsync<PagedResult<Post>>(async ct =>
         {
             await using var db = await _factory.CreateDbContextAsync(ct);
-            var q = db.Posts.AsNoTracking().Where(p => p.TopicId == topicId && !p.IsDeleted);
+            var q = db.Posts.AsNoTracking()
+                .Include(p => p.Topic)
+                .Include(p => p.Author)
+                .Where(p => p.TopicId == topicId && !p.IsDeleted);
 
             if (!string.IsNullOrWhiteSpace(titleQuery))
             {

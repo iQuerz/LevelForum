@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authentication.Cookies;
+
 namespace LevelForum.Data.Services;
 
 public static class Services

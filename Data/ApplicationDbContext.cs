@@ -27,12 +27,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         b.Entity<TopicFollow>().HasIndex(tf => new { tf.UserId, tf.TopicId }).IsUnique();
         b.Entity<Vote>().HasIndex(v => new { v.UserId, v.TargetType, v.TargetId }).IsUnique();
 
-        // Vote
+        // enumovi
         b.Entity<Vote>()
             .Property(x => x.TargetType)
             .HasConversion<string>();
 
-        // Report
         b.Entity<Report>()
             .Property(x => x.TargetType)
             .HasConversion<string>();
@@ -40,11 +39,18 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .Property(x => x.Status)
             .HasConversion<string>();
         
+        b.Entity<AppUser>()
+            .Property(x => x.GlobalRole)
+            .HasConversion<string>();
+        b.Entity<AppUserTopicRole>()
+            .Property(x => x.TopicRole)
+            .HasConversion<string>();
+        
         // Topic.CreatedBy: NE briši topike pri brisanju korisnika (razbija multiple-cascade putanju)
         b.Entity<Topic>()
             .HasOne(t => t.CreatedBy)
             .WithMany()
-            .OnDelete(DeleteBehavior.NoAction); // ili .Restrict
+            .OnDelete(DeleteBehavior.NoAction);
 
         // AppUserTopicRole.Topic: brisanje topika briše njegove role
         b.Entity<AppUserTopicRole>()

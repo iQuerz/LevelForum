@@ -3,10 +3,16 @@
 @using LevelForum.Components.Posts
 @using LevelForum.Components.Other
 @using LevelForum.Components.Shared
+@using LevelForum.Data.Services
+@using Entities = LevelForum.Data.Entities
 
-<PageContainer Title="@_title">
+@inject PostService _postService
+@inject TopicService _topicService
+@inject VoteService _voteService
+
+<PageContainer Title="@TopicToView.Title">
     <div class="app-card" style="padding:12px; display:flex; gap:8px; align-items:center;">
-        <span class="chip">@_title</span>
+        <span class="chip">@TopicToView.Title</span>
         <FollowToggle IsFollowed="@_followed" OnChange="v => _followed = v" />
         <span style="flex:1"></span>
         <LockToggle Locked="@_locked" OnToggle="v => _locked = v" />
@@ -31,6 +37,8 @@
 
 @code{
     [Parameter] public int Id { get; set; }
+    Entities.Topic TopicToView { get; set; } = new();
+    int CurrentUserId = 2;
 
     private string _title = "Topic";
     private bool _followed = true;
@@ -41,32 +49,19 @@
     private bool _loading = true;
     private bool _loadingMore;
     private bool _hasMore = true;
+    private int _page = 0;
 
-    private List<PostList.PostListItem> _items = new();
+    private List<PostList.PostListItem> _items = [];
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        _title = Id switch { 1 => "General", 2 => "News", _ => $"Topic {Id}" };
-        if (_items.Count == 0)
-        {
-            for (int i = 1; i <= 6; i++)
-            {
-                _items.Add(new PostList.PostListItem(
-                    Id: Id * 100 + i,
-                    Title: $"Post in {_title} #{i}",
-                    TopicId: Id,
-                    TopicTitle: _title,
-                    AuthorName: "User",
-                    CreatedAt: DateTime.UtcNow.AddMinutes(-7 * i),
-                    Score: i % 9,
-                    MyVote: 0,
-                    CommentsCount: i + 1,
-                    TopicLocked: _locked,
-                    VoteDisabled: false
-                ));
-            }
-            _loading = false;
-        }
+        TopicToView = await _topicService.GetByIdAsync(Id);
+        _title = TopicToView.Title;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMore();
     }
 
     private Task DoSearch(string? q)
@@ -84,41 +79,75 @@
     {
         _loadingMore = true;
         StateHasChanged();
-        await Task.Delay(250);
-        var start = _items.Count + 1;
-        for (int i = start; i < start + 4; i++)
+        
+        var newItems = await _postService.QueryByTopicAsync(
+            topicId: Id,
+            titleQuery: null,
+            sort: _sort,
+            page: ++_page,
+            pageSize: 20);
+
+        foreach (var item in newItems.Items)
         {
             _items.Add(new PostList.PostListItem(
-                Id: Id * 100 + i,
-                Title: $"More in {_title} #{i}",
-                TopicId: Id,
-                TopicTitle: _title,
-                AuthorName: "User",
-                CreatedAt: DateTime.UtcNow.AddMinutes(-6 * i),
-                Score: (i * 2) % 10,
+                Id: item.Id,
+                Title: item.Title,
+                TopicId: item.TopicId,
+                TopicTitle: item.Topic.Title,
+                AuthorName: item.Author.Username,
+                CreatedAt: item.CreatedAt,
+                Score: 0,
                 MyVote: 0,
-                CommentsCount: i % 5,
-                TopicLocked: _locked,
-                VoteDisabled: false
-            ));
+                CommentsCount: 0,
+                TopicLocked: item.Topic.IsLocked,
+                VoteDisabled: item.IsDeleted || item.Topic.IsLocked));
         }
-        _hasMore = _items.Count < 24;
+        
+        _hasMore = true;
         _loadingMore = false;
     }
 
-    private Task HandleVote((int postId, int value) ev)
+    private async Task HandleVote((int postId, int value) ev)
     {
         var idx = _items.FindIndex(p => p.Id == ev.postId);
-        if (idx < 0) return Task.CompletedTask;
+        if (idx < 0 /*|| CurrentUserId <= 0*/) return; // uključi proveru usera ako ti treba
 
         var it = _items[idx];
-        var old = it.MyVote ?? 0;
-        var next = (old == ev.value) ? 0 : ev.value;
-        var delta = next - old;
-        _items[idx] = it with { MyVote = next == 0 ? (int?)null : next, Score = it.Score + delta };
+        var oldVote = it.MyVote ?? 0;
+        var next = (oldVote == ev.value) ? 0 : ev.value;
+
+        // Optimističko ažuriranje + onemogući klik dok traje request
+        _items[idx] = it with
+        {
+            VoteDisabled = true,
+            MyVote = next == 0 ? (int?)null : next,
+            Score = it.Score + (next - oldVote)
+        };
         StateHasChanged();
-        return Task.CompletedTask;
+
+        try
+        {
+            // Server vraća zbir glasova nakon izmene
+            // (pretpostavka: ContentType.Post jer smo na /topic listi postova)
+            var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Post, ev.postId, CurrentUserId, next);
+
+            _items[idx] = _items[idx] with
+            {
+                Score = newScore,
+                VoteDisabled = false
+            };
+        }
+        catch
+        {
+            // Greška -> vrati stari prikaz
+            _items[idx] = it;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
     }
+
 
     private Task HandleReport(int postId) => Task.CompletedTask;
 }

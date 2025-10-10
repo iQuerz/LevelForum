@@ -12,7 +12,10 @@
 </head>
 
 <body>
-    <Routes @rendermode="RenderModeForPage"/>
+    <CascadingAuthenticationState>
+        <Routes @rendermode="RenderModeForPage"/>
+    </CascadingAuthenticationState>
+
     <script src="_framework/blazor.web.js"></script>
 </body>
 

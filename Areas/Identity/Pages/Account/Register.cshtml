@@ -1,0 +1,237 @@
+@page
+@using System.Reflection
+@model LevelForum.Areas.Identity.Pages.Account.RegisterModel
+
+<div class="auth-screen">
+    <div class="brand">
+        <span class="chip">Welcome</span>
+        <h1>LevelTMI Register</h1>
+    </div>
+
+    <form method="post" asp-antiforgery="true" class="app-card auth-card">
+        <div class="field">
+            <span class="icon">👤</span>
+            <input asp-for="Username" type="text" placeholder="Username" autocomplete="username" />
+        </div>
+        <span asp-validation-for="Username" class="val-msg"></span>
+
+        <div class="field">
+            <span class="icon">📧</span>
+            <input asp-for="Email" type="email" placeholder="Email" autocomplete="email" />
+        </div>
+        <span asp-validation-for="Email" class="val-msg"></span>
+
+        <div class="field">
+            <span class="icon">🔒</span>
+            <input asp-for="Password" type="password" placeholder="Password" autocomplete="new-password" />
+        </div>
+        <span asp-validation-for="Password" class="val-msg"></span>
+
+        <div class="field">
+            <span class="icon">🔒</span>
+            <input asp-for="ConfirmPassword" type="password" placeholder="Confirm Password" autocomplete="new-password" />
+        </div>
+        <span asp-validation-for="ConfirmPassword" class="val-msg"></span>
+
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div class="alert-error">@Model.ErrorMessage</div>
+        }
+        @if (!string.IsNullOrEmpty(Model.SuccessMessage))
+        {
+            <div class="alert-success">@Model.SuccessMessage</div>
+        }
+
+        <button type="submit" class="btn btn-primary w-100">Register</button>
+    </form>
+
+    <i class="version">v@(Assembly.GetEntryAssembly()?.GetName().Version?.ToString(4))</i>
+</div>
+
+<style>
+    /* Ako ovi :root tokeni već postoje globalno, možeš slobodno da ih izbrišeš ovde. Ostavio sam ih radi samostalnog rada stranice. */
+    :root {
+        --primary-lighter:#818cf8; --on-primary-lighter:#0b1220;
+        --primary-light:#6366f1;   --on-primary-light:#0b1220;
+        --primary:#4f46e5;         --on-primary:#ffffff;
+        --primary-dark:#4338ca;    --on-primary-dark:#ffffff;
+        --primary-darker:#3730a3;  --on-primary-darker:#ffffff;
+
+        --secondary-lighter:#94a3b8; --on-secondary-lighter:#0b1220;
+        --secondary-light:#64748b;   --on-secondary-light:#0b1220;
+        --secondary:#475569;         --on-secondary:#ffffff;
+        --secondary-dark:#334155;    --on-secondary-dark:#ffffff;
+        --secondary-darker:#1f2937;  --on-secondary-darker:#ffffff;
+
+        --success-lighter:#86efac; --on-success-lighter:#052e16;
+        --success-light:#4ade80;   --on-success-light:#052e16;
+        --success:#22c55e;         --on-success:#052e16;
+        --success-dark:#16a34a;    --on-success-dark:#ffffff;
+        --success-darker:#15803d;  --on-success-darker:#ffffff;
+
+        --danger-lighter:#fca5a5; --on-danger-lighter:#3f0a0a;
+        --danger-light:#f87171;   --on-danger-light:#3f0a0a;
+        --danger:#ef4444;         --on-danger:#ffffff;
+        --danger-dark:#dc2626;    --on-danger-dark:#ffffff;
+        --danger-darker:#b91c1c;  --on-danger-darker:#ffffff;
+
+        --info-lighter:#7dd3fc; --on-info-lighter:#0b1220;
+        --info-light:#38bdf8;   --on-info-light:#0b1220;
+        --info:#0ea5e9;         --on-info:#ffffff;
+        --info-dark:#0284c7;    --on-info-dark:#ffffff;
+        --info-darker:#0369a1;  --on-info-darker:#ffffff;
+
+        --warning-lighter:#fcd34d; --on-warning-lighter:#1f1300;
+        --warning-light:#fbbf24;   --on-warning-light:#1f1300;
+        --warning:#f59e0b;         --on-warning:#1f1300;
+        --warning-dark:#d97706;    --on-warning-dark:#ffffff;
+        --warning-darker:#b45309;  --on-warning-darker:#ffffff;
+
+        --black-lighter:#374151; --on-black-lighter:#ffffff;
+        --black-light:#1f2937;   --on-black-light:#ffffff;
+        --black:#111827;         --on-black:#ffffff;
+        --black-dark:#0b0f19;    --on-black-dark:#ffffff;
+        --black-darker:#030712;  --on-black-darker:#ffffff;
+
+        --white-lighter:#ffffff; --on-white-lighter:#111827;
+        --white-light:#ffffff;   --on-white-light:#111827;
+        --white:#ffffff;         --on-white:#111827;
+        --white-dark:#f9fafb;    --on-white-dark:#111827;
+        --white-darker:#f3f4f6;  --on-white-darker:#0b1220;
+    }
+
+    body { margin: 0; }
+
+    /* IDENTIČNA mapa kao na login (dark) */
+    .auth-screen{
+        --brand: var(--primary, #4f46e5);
+        --on-brand: var(--on-primary, #ffffff);
+        --ink: var(--on-black-light, #ffffff);
+        --muted: var(--secondary-lighter, #94a3b8);
+
+        --bg: var(--black-dark, #0b0f19);
+        --surface: var(--black-light, #1f2937);
+        --input-surface: var(--black, #111827);
+        --border: var(--secondary-dark, #334155);
+
+        --error: var(--danger, #ef4444);
+        --on-error: var(--on-danger, #ffffff);
+
+        --success-bg: color-mix(in srgb, var(--success) 22%, transparent);
+        --success-border: color-mix(in srgb, var(--success) 55%, transparent);
+        --success-text: var(--on-success-dark, #ffffff);
+
+        --shadow: 0 0 2px rgba(0,0,0,.35), 0 4px 16px rgba(0,0,0,.45);
+        --radius:12px;
+
+        min-height:100vh;
+        background:var(--bg);
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:12px;
+        padding:24px;
+        font-family: Source Sans Pro, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+        color: var(--ink);
+    }
+
+    .brand{
+        display:flex; flex-direction:column; align-items:center; gap:.5rem;
+        color:var(--brand);
+    }
+    .brand h1{
+        margin:0;
+        font-weight:700;
+        letter-spacing:-0.02rem;
+        font-size:clamp(2.25rem, 4vw, 3.25rem);
+        line-height:1.1;
+        color: var(--ink);
+    }
+    .chip{
+        display:inline-block;
+        padding:.25rem .6rem;
+        border-radius:999px;
+        background: color-mix(in srgb, var(--primary) 22%, transparent);
+        color: var(--on-primary, #ffffff);
+        font-weight:600;
+        font-size:.9rem;
+        border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+    }
+
+    .app-card{
+        background:var(--surface);
+        box-shadow:var(--shadow);
+        border-radius:var(--radius);
+        padding:16px;
+        width:min(520px, 92vw);
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+        border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    }
+
+    .field{
+        display:flex; align-items:center; gap:10px;
+        border:1px solid color-mix(in srgb, var(--border) 65%, transparent);
+        border-radius:10px;
+        padding:10px 12px;
+        background: var(--input-surface);
+    }
+    .field .icon{
+        width:22px; text-align:center; color:var(--brand); opacity:.95;
+    }
+    .field input{
+        flex:1; border:none; outline:none;
+        color:var(--ink);
+        font-size:14px;
+        background:transparent;
+    }
+    .field input::placeholder{
+        color: color-mix(in srgb, var(--muted) 80%, transparent);
+    }
+
+    .val-msg{
+        color:var(--error);
+        font-size:.85rem;
+        margin:-2px 2px 6px 2px;
+    }
+
+    .alert-error{
+        color: var(--on-error);
+        background: color-mix(in srgb, var(--error) 92%, black 8%);
+        border: 1px solid color-mix(in srgb, var(--error) 60%, transparent);
+        border-radius:8px;
+        padding:8px 10px;
+        font-size:.92rem;
+    }
+    .alert-success{
+        color: var(--success-text);
+        background: var(--success-bg);
+        border: 1px solid var(--success-border);
+        border-radius:8px;
+        padding:8px 10px;
+        font-size:.92rem;
+    }
+
+    .btn{
+        appearance:none; border:0; border-radius:10px;
+        padding:10px 14px; font-weight:600;
+        line-height:1; cursor:pointer;
+    }
+    .btn-primary{
+        background:var(--brand); color:var(--on-brand);
+        transition: transform .05s ease-in-out, filter .2s ease;
+        box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 28%, transparent);
+    }
+    .btn-primary:hover{ filter:brightness(1.08); }
+    .btn-primary:active{ transform: translateY(1px); }
+    .w-100{ width:100%; }
+
+    .version{
+        color: color-mix(in srgb, var(--muted) 85%, transparent);
+        min-width:300px; width:30%;
+        text-align:right; font-size:.6rem;
+        margin-top:-.9rem;
+    }
+</style>

@@ -1,0 +1,293 @@
+@page
+@using System.Reflection
+@model LevelForum.Areas.Identity.Pages.Account.LoginModel
+
+<div class="auth-screen">
+    <div class="brand">
+        <span class="chip">Welcome</span>
+        <h1>LevelTMI Login</h1>
+    </div>
+
+    <form method="post" asp-antiforgery="true" class="app-card auth-card">
+        <div class="field">
+            <span class="icon">👤</span>
+            <input asp-for="Username" placeholder="Username / Email" autocomplete="username" />
+        </div>
+        <span asp-validation-for="Username" class="val-msg"></span>
+
+        <div class="field">
+            <span class="icon">🔒</span>
+            <input asp-for="Password" type="password" placeholder="Password" autocomplete="current-password" />
+        </div>
+        <span asp-validation-for="Password" class="val-msg"></span>
+
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <div class="alert-error">@Model.ErrorMessage</div>
+        }
+
+        <button type="submit" class="btn btn-primary w-100">Log in</button>
+    </form>
+
+    <i class="version">v@(Assembly.GetEntryAssembly()?.GetName().Version?.ToString(4))</i>
+</div>
+<style>
+    :root {
+        /* ===================== PRIMARY (indigo) ===================== */
+        --primary-lighter: #818cf8;   /* indigo-400 */
+        --on-primary-lighter: #0b1220;/* dark text on light indigo */
+
+        --primary-light:   #6366f1;   /* indigo-500 */
+        --on-primary-light:#0b1220;   /* dark text (better contrast than white) */
+
+        --primary:         #4f46e5;   /* indigo-600 */
+        --on-primary:      #ffffff;   /* white text on base */
+
+        --primary-dark:    #4338ca;   /* indigo-700 */
+        --on-primary-dark: #ffffff;
+
+        --primary-darker:  #3730a3;   /* indigo-800 */
+        --on-primary-darker:#ffffff;
+
+        /* ===================== SECONDARY (slate) ===================== */
+        --secondary-lighter: #94a3b8; /* slate-400 */
+        --on-secondary-lighter: #0b1220;
+
+        --secondary-light:   #64748b; /* slate-500 */
+        --on-secondary-light: #0b1220;
+
+        --secondary:         #475569; /* slate-600 */
+        --on-secondary:      #ffffff;
+
+        --secondary-dark:    #334155; /* slate-700 */
+        --on-secondary-dark: #ffffff;
+
+        --secondary-darker:  #1f2937; /* slate-800 */
+        --on-secondary-darker:#ffffff;
+
+        /* ===================== SUCCESS (green) ===================== */
+        --success-lighter: #86efac;   /* green-300 */
+        --on-success-lighter: #052e16;/* deep green-900 for contrast */
+
+        --success-light:   #4ade80;   /* green-400 */
+        --on-success-light:#052e16;
+
+        --success:         #22c55e;   /* green-500 */
+        --on-success:      #052e16;   /* dark text keeps ≥4.5:1 contrast on many screens */
+
+        --success-dark:    #16a34a;   /* green-600 */
+        --on-success-dark: #ffffff;
+
+        --success-darker:  #15803d;   /* green-700 */
+        --on-success-darker:#ffffff;
+
+        /* ===================== DANGER (red) ===================== */
+        --danger-lighter: #fca5a5;    /* red-300 */
+        --on-danger-lighter:#3f0a0a;  /* deep red-900ish for contrast */
+
+        --danger-light:   #f87171;    /* red-400 */
+        --on-danger-light:#3f0a0a;
+
+        --danger:         #ef4444;    /* red-500 */
+        --on-danger:      #ffffff;    /* base is saturated enough for white */
+
+        --danger-dark:    #dc2626;    /* red-600 */
+        --on-danger-dark: #ffffff;
+
+        --danger-darker:  #b91c1c;    /* red-700 */
+        --on-danger-darker:#ffffff;
+
+        /* ===================== INFO (sky) ===================== */
+        --info-lighter: #7dd3fc;      /* sky-300 */
+        --on-info-lighter:#0b1220;
+
+        --info-light:   #38bdf8;      /* sky-400 */
+        --on-info-light:#0b1220;
+
+        --info:         #0ea5e9;      /* sky-500 */
+        --on-info:      #ffffff;
+
+        --info-dark:    #0284c7;      /* sky-600 */
+        --on-info-dark: #ffffff;
+
+        --info-darker:  #0369a1;      /* sky-700 */
+        --on-info-darker:#ffffff;
+
+        /* ===================== WARNING (amber) ===================== */
+        --warning-lighter: #fcd34d;   /* amber-300 */
+        --on-warning-lighter:#1f1300; /* deep brown/near-black for contrast */
+
+        --warning-light:   #fbbf24;   /* amber-400 */
+        --on-warning-light:#1f1300;
+
+        --warning:         #f59e0b;   /* amber-500 */
+        --on-warning:      #1f1300;   /* dark text reads better than white */
+
+        --warning-dark:    #d97706;   /* amber-600 */
+        --on-warning-dark: #ffffff;
+
+        --warning-darker:  #b45309;   /* amber-700 */
+        --on-warning-darker:#ffffff;
+
+        /* ===================== BLACK (neutral, dark surfaces) ===================== */
+        --black-lighter: #374151;     /* gray-700 */
+        --on-black-lighter:#ffffff;
+
+        --black-light:   #1f2937;     /* gray-800 */
+        --on-black-light:#ffffff;
+
+        --black:         #111827;     /* gray-900 */
+        --on-black:      #ffffff;
+
+        --black-dark:    #0b0f19;     /* custom deep */
+        --on-black-dark: #ffffff;
+
+        --black-darker:  #030712;     /* gray-950 */
+        --on-black-darker:#ffffff;
+
+        /* ===================== WHITE (neutral, light surfaces) ===================== */
+        --white-lighter: #ffffff;
+        --on-white-lighter:#111827;
+
+        --white-light:   #ffffff;
+        --on-white-light:#111827;
+
+        --white:         #ffffff;
+        --on-white:      #111827;
+
+        --white-dark:    #f9fafb;     /* gray-50 */
+        --on-white-dark: #111827;
+
+        --white-darker:  #f3f4f6;     /* gray-100 */
+        --on-white-darker:#0b1220;
+    }
+    
+    body {
+        margin: 0;
+    }
+    
+     .auth-screen{
+         /* brand & text */
+         --brand: var(--primary, #4f46e5);
+         --on-brand: var(--on-primary, #ffffff);
+         --ink: var(--on-black-light, #ffffff);
+         --muted: var(--secondary-lighter, #94a3b8);
+
+         /* surfaces & borders (dark) */
+         --bg: var(--black-dark, #0b0f19);          /* pozadina ekrana */
+         --surface: var(--black-light, #1f2937);    /* kartice/polja */
+         --input-surface: var(--black, #111827);    /* input unutra polja */
+         --border: var(--secondary-dark, #334155);  /* ivice */
+
+         /* status */
+         --error: var(--danger, #ef4444);
+         --on-error: var(--on-danger, #ffffff);
+
+         --shadow: 0 0 2px rgba(0,0,0,.35), 0 4px 16px rgba(0,0,0,.45);
+         --radius:12px;
+
+         min-height:100vh;
+         background:var(--bg);
+         display:flex;
+         flex-direction:column;
+         align-items:center;
+         justify-content:center;
+         gap:12px;
+         padding:24px;
+         font-family: Source Sans Pro, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+         color: var(--ink);
+     }
+
+    .brand{
+        display:flex; flex-direction:column; align-items:center; gap:.5rem;
+        color:var(--brand);
+    }
+    .brand h1{
+        margin:0;
+        font-weight:700;
+        letter-spacing:-0.02rem;
+        font-size:clamp(2.25rem, 4vw, 3.25rem);
+        line-height:1.1;
+        color: var(--ink);
+    }
+    .chip{
+        display:inline-block;
+        padding:.25rem .6rem;
+        border-radius:999px;
+        /* blagi indigo glow na tamnoj pozadini */
+        background: color-mix(in srgb, var(--primary) 22%, transparent);
+        color: var(--on-primary, #ffffff);
+        font-weight:600;
+        font-size:.9rem;
+        border: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+    }
+
+    .app-card{
+        background:var(--surface);
+        box-shadow:var(--shadow);
+        border-radius:var(--radius);
+        padding:16px;
+        width:min(520px, 92vw);
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+        border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    }
+
+    /* polja */
+    .field{
+        display:flex; align-items:center; gap:10px;
+        border:1px solid color-mix(in srgb, var(--border) 65%, transparent);
+        border-radius:10px;
+        padding:10px 12px;
+        background: var(--input-surface);
+    }
+    .field .icon{
+        width:22px; text-align:center; color:var(--brand); opacity:.95;
+    }
+    .field input{
+        flex:1; border:none; outline:none;
+        color:var(--ink);
+        font-size:14px;
+        background:transparent;
+    }
+    .field input::placeholder{
+        color: color-mix(in srgb, var(--muted) 80%, transparent);
+    }
+
+    .val-msg{
+        color:var(--error);
+        font-size:.85rem;
+        margin:-2px 2px 6px 2px;
+    }
+
+    .alert-error{
+        color: var(--on-error);
+        background: color-mix(in srgb, var(--error) 92%, black 8%);
+        border: 1px solid color-mix(in srgb, var(--error) 60%, transparent);
+        border-radius:8px;
+        padding:8px 10px;
+        font-size:.92rem;
+    }
+
+    .btn{
+        appearance:none; border:0; border-radius:10px;
+        padding:10px 14px; font-weight:600;
+        line-height:1; cursor:pointer;
+    }
+    .btn-primary{
+        background:var(--brand); color:var(--on-brand);
+        transition: transform .05s ease-in-out, filter .2s ease;
+        box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 28%, transparent);
+    }
+    .btn-primary:hover{ filter:brightness(1.08); }
+    .btn-primary:active{ transform: translateY(1px); }
+    .w-100{ width:100%; }
+
+    .version{
+        color: color-mix(in srgb, var(--muted) 85%, transparent);
+        min-width:300px; width:30%;
+        text-align:right; font-size:.6rem;
+        margin-top:-.9rem;
+    }
+</style>
