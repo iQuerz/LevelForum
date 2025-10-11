@@ -42,7 +42,6 @@ namespace LevelForum.Areas.Identity.Pages.Account
 
         public async Task<IActionResult> OnPostAsync()
         {
-            // minimalna server-side validacija (isti duh kao login)
             if (string.IsNullOrWhiteSpace(Username) ||
                 string.IsNullOrWhiteSpace(Email) ||
                 string.IsNullOrWhiteSpace(Password) ||
@@ -80,14 +79,13 @@ namespace LevelForum.Areas.Identity.Pages.Account
                 Username = Username.Trim(),
                 Email = Email.Trim(),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(Password),
-                // ako AppUser ima druge obavezne propertije, setuj ovde default vrednosti
-                // npr. GlobalRole = GlobalRole.User
+                GlobalRole = AppRole.User,
             };
 
             _context.AppUsers.Add(newUser);
             await _context.SaveChangesAsync();
 
-            // automatski login nakon registracije (isto kao LoginModel)
+            // automatski login nakon registracije
             var principal = GetIdentity(newUser);
             await HttpContext.SignInAsync(
                 CookieAuthenticationDefaults.AuthenticationScheme,

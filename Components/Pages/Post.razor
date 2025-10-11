@@ -1,167 +1,134 @@
 @page "/post/{Id:int}"
+@using System.Security.Claims
 @using LevelForum.Components.Layout
 @using LevelForum.Components.Posts
 @using LevelForum.Components.Comments
 @using LevelForum.Components.Shared
+@using LevelForum.Data.Services
+@using LevelForum.Infrastructure
 @inject NavigationManager Nav
+@inject PostService _postService
+@inject CommentService _commentService
 
 <PageContainer Width="narrow">
-    <PostHeader Id="@Id"
-                Title="@_title"
-                TopicId="@_topicId"
-                TopicTitle="@_topicTitle"
-                TopicLocked="@_topicLocked"
-                AuthorName="@_author"
-                CreatedAt="@_created"
-                Score="@_score"
-                MyVote="@_myVote"
-                VoteDisabled="false"
-                CanEditPost="@_canEdit"
-                CanDeletePost="@_canEdit"
-                CanLockTopic="@_canLockTopic"
-                OnVote="HandleVote"
-                OnReport="ReportPost"
-                OnEditPost="EditPost"
-                OnDeletePost="DeletePost"
-                OnToggleLockTopic="LockTopic" />
-
-    <PostBody Text="@_body" />
-
-    <div style="height:8px"></div>
-
-    @if (!_topicLocked)
+    @if (_loading)
     {
-        <CommentComposer CanPost="true"
-                         Placeholder="Write a comment…"
-                         MaxChars="2000"
-                         OnSubmit="AddComment" />
+        <div class="app-card" style="padding:12px;">
+            <div class="skel skel-title"></div>
+            <div class="skel skel-line"></div>
+            <div class="skel skel-line w-85"></div>
+        </div>
+    }
+    else if (_post is not null)
+    {
+        <PostHeader Id="@_post.Id"
+                    Title="@_post.Title"
+                    TopicId="@_post.TopicId"
+                    TopicTitle="@_post.Topic.Title"
+                    TopicLocked="@_post.Topic.IsLocked"
+                    AuthorName="@_post.Author.Username"
+                    CreatedAt="@_post.CreatedAt"
+                    Score="@_postScore"
+                    MyVote="@_myVote"
+                    CurrentUserId="@CurrentUserId"
+                    CanEditPost="@_canEdit"
+                    CanDeletePost="@_canEdit"
+                    OnReport="ReportPost"
+                    OnEditPost="EditPost"
+                    OnDeletePost="DeletePost" />
+
+        <PostBody Text="@_post.Body" />
+
+        <div style="height:8px"></div>
+
+        @if (!_post.Topic.IsLocked)
+        {
+            <CommentComposer CanPost="@(CurrentUserId>0)"
+                             Placeholder="Write a comment…"
+                             MaxChars="2000"
+                             OnSubmit="AddTopComment" />
+        }
+        else
+        {
+            <div class="app-card" style="padding:12px;">Topic is locked. You cannot reply.</div>
+        }
+
+        <div style="height:8px"></div>
+
+        <CommentThread PostId="@_post.Id"
+                       TopicLocked="@_post.Topic.IsLocked"
+                       MaxChars="2000" 
+                       @ref="_commentsRef" />
     }
     else
     {
-        <div class="app-card" style="padding:12px;">Topic is locked. You cannot reply.</div>
+        <div class="app-card" style="padding:12px;">Post not found.</div>
     }
-
-    <div style="height:8px"></div>
-
-    <CommentThread Items="@_comments"
-                   IsLoading="@_loading"
-                   HasMore="@_hasMore"
-                   IsLoadingMore="@_loadingMore"
-                   OnLoadMore="LoadMore"
-                   OnVote="VoteComment"
-                   OnReport="ReportComment"
-                   OnReply="ReplyTo"
-                   OnEdit="EditComment"
-                   OnDelete="DeleteComment" />
 </PageContainer>
 
 @code{
     [Parameter] public int Id { get; set; }
+    [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+    protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+    int? CurrentUserId => UserClaims.UserId();
 
-    private string _title = "Post title";
-    private int _topicId = 1;
-    private string _topicTitle = "General";
-    private bool _topicLocked = false;
+    private CommentThread? _commentsRef;
+    
+    LevelForum.Data.Entities.Post? _post;
+    bool _loading = true;
 
-    private string _author = "Alice";
-    private DateTime _created = DateTime.UtcNow.AddHours(-2);
-    private int _score = 12;
-    private int? _myVote = 0;
-    private string _body = "This is the body of the post.\nPlain text only.";
+    int _postScore = 0;
+    int? _myVote = null;
 
-    private bool _canEdit = true;
-    private bool _canLockTopic = true;
+    bool _canEdit = false;
 
-    private List<CommentThread.CommentVm> _comments = new();
-    private bool _loading;
-    private bool _loadingMore;
-    private bool _hasMore = true;
-
-    protected override void OnInitialized()
+    protected override async Task OnParametersSetAsync()
     {
-        // few seed comments
-        _comments.Add(new CommentThread.CommentVm(1, null, "Bob", "Nice post!", DateTime.UtcNow.AddMinutes(-50), 3, 0, false, false));
-        _comments.Add(new CommentThread.CommentVm(2, null, "Carla", "I agree with this.", DateTime.UtcNow.AddMinutes(-40), 2, 0, false, false));
-        _comments.Add(new CommentThread.CommentVm(3, 2, "Dina", "Same here!", DateTime.UtcNow.AddMinutes(-30), 1, 0, false, false));
+        _loading = true;
+        StateHasChanged();
+
+        _post = await _postService.GetByIdAsync(Id, userId: CurrentUserId);
+        if (_post is not null)
+        {
+            _postScore = _post.Score;
+            _myVote = _post.MyVote;
+            _canEdit = (_post.AuthorId == CurrentUserId);
+        }
+
+        _loading = false;
     }
 
-    private Task HandleVote((int postId, int value) ev)
+    private async Task AddTopComment(string text)
     {
-        var old = _myVote ?? 0;
-        var next = (old == ev.value) ? 0 : ev.value;
-        _score += next - old;
-        _myVote = next == 0 ? (int?)null : next;
-        StateHasChanged();
-        return Task.CompletedTask;
+        if (_post is null || CurrentUserId <= 0) return;
+        await _commentService.CreateAsync(_post.Id, CurrentUserId.Value, text, null);
+        
+        if (_commentsRef is not null)
+        {
+            await _commentsRef.ReloadFromStart();
+        }
     }
 
     private Task ReportPost(int postId) => Task.CompletedTask;
-    private Task EditPost(int postId) => Task.CompletedTask;
+
+    private Task EditPost(int postId)
+    {
+        Nav.NavigateTo($"/post/{postId}/edit");
+        return Task.CompletedTask;
+    }
+
     private Task DeletePost(int postId)
     {
         Nav.NavigateTo("/");
         return Task.CompletedTask;
     }
-
-    private Task LockTopic(bool next) { _topicLocked = next; return Task.CompletedTask; }
-
-    private Task AddComment(string text)
-    {
-        var id = (_comments.Max(c => c.Id) + 1);
-        _comments.Insert(0, new CommentThread.CommentVm(id, null, "Me", text, DateTime.UtcNow, 0, 0, true, false));
-        return Task.CompletedTask;
-    }
-
-    private Task LoadMore()
-    {
-        _loadingMore = true;
-        StateHasChanged();
-        // demo add 2
-        var start = _comments.Max(c => c.Id) + 1;
-        _comments.Add(new CommentThread.CommentVm(start, null, "Eva", "More thoughts…", DateTime.UtcNow.AddHours(-5), 0, 0, false, false));
-        _comments.Add(new CommentThread.CommentVm(start + 1, start, "Frank", "Reply to that.", DateTime.UtcNow.AddHours(-4), 0, 0, false, false));
-        _hasMore = false;
-        _loadingMore = false;
-        return Task.CompletedTask;
-    }
-
-    private Task VoteComment((int commentId, int value) ev)
-    {
-        var idx = _comments.FindIndex(c => c.Id == ev.commentId);
-        if (idx < 0) return Task.CompletedTask;
-        var it = _comments[idx];
-        var old = it.MyVote ?? 0;
-        var next = (old == ev.value) ? 0 : ev.value;
-        var delta = next - old;
-        _comments[idx] = it with { MyVote = next == 0 ? (int?)null : next, Score = it.Score + delta };
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
-    private Task ReportComment(int id) => Task.CompletedTask;
-
-    private Task ReplyTo((int parentId, string text) ev)
-    {
-        var newId = _comments.Max(c => c.Id) + 1;
-        _comments.Add(new CommentThread.CommentVm(newId, ev.parentId, "Me", ev.text, DateTime.UtcNow, 0, 0, true, false));
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
-    private Task EditComment((int commentId, string text) ev)
-    {
-        var idx = _comments.FindIndex(c => c.Id == ev.commentId);
-        if (idx < 0) return Task.CompletedTask;
-        var it = _comments[idx];
-        _comments[idx] = it with { Body = ev.text };
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
-
-    private Task DeleteComment(int id)
-    {
-        _comments.RemoveAll(c => c.Id == id || c.ParentId == id);
-        StateHasChanged();
-        return Task.CompletedTask;
-    }
 }
+
+<style>
+  .skel{ background:linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.12) 37%, rgba(255,255,255,.06) 63%);
+    background-size:400% 100%; animation:shimmer 1.2s ease-in-out infinite; border-radius:8px; height:14px }
+  .skel-title{ height:20px; width:60%; margin-bottom:10px }
+  .skel-line{ height:14px; width:100%; margin:6px 0 }
+  .w-85{ width:85% }
+  @@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+</style>

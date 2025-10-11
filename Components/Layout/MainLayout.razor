@@ -13,14 +13,7 @@
     <!-- LAYOUT GRID -->
     <div class="app-shell-grid">
       <!-- SIDEBAR (desktop mini / mobile drawer) -->
-        <TopicsSidebar Open="@_sidebarOpen"
-                     ActiveTopicId="@ActiveTopicId"
-                     FollowedTopics="@FollowedTopics"
-                     AllTopics="@AllTopics"
-                     OnFollow="HandleFollow"
-                     OnUnfollow="HandleUnfollow"
-                     OnNavigate="HandleNavigate"
-                     OnClose="CloseSidebar" />
+        <TopicsSidebar />
 
         <!-- MAIN CONTENT -->
         <main class="app-main">
@@ -48,20 +41,10 @@
 </style>
 
 @code{
-    // Public API (možeš ih setovati kasnije preko DI/state-a ili ostaviti kao default)
-    [Parameter] public string Title { get; set; } = "LevelForum";
+    [Parameter] public string Title { get; set; } = "LevelTMI";
     [Parameter] public int UnreadCount { get; set; } = 0;
 
-    // Sidebar data (za sada prazno – bez servisa; kasnije ćeš puniti iz DB-a)
-    [Parameter] public IEnumerable<TopicsSidebar.TopicItem> FollowedTopics { get; set; } = [];
-    [Parameter] public IEnumerable<TopicsSidebar.TopicItem> AllTopics { get; set; } = [];
-    [Parameter] public int? ActiveTopicId { get; set; }
-
-    // Bubble-up events (po potrebi ih zakačiš na app-level)
     [Parameter] public EventCallback<string?> OnSearch { get; set; }
-    [Parameter] public EventCallback<int> OnNavigateTopic { get; set; }
-    [Parameter] public EventCallback<int> OnFollowTopic { get; set; }
-    [Parameter] public EventCallback<int> OnUnfollowTopic { get; set; }
 
     bool _sidebarOpen; // mobile drawer state
 
@@ -69,11 +52,4 @@
     void CloseSidebar() => _sidebarOpen = false;
 
     Task HandleSearch(string? q) => OnSearch.InvokeAsync(q);
-    Task HandleNavigate(int topicId)
-    {
-      CloseSidebar();
-      return OnNavigateTopic.InvokeAsync(topicId);
-    }
-    Task HandleFollow(int topicId) => OnFollowTopic.InvokeAsync(topicId);
-    Task HandleUnfollow(int topicId) => OnUnfollowTopic.InvokeAsync(topicId);
 }

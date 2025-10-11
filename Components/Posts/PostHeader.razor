@@ -1,23 +1,26 @@
 @using Microsoft.AspNetCore.Components
+@using Entities = LevelForum.Data.Entities
+@using LevelForum.Data.Services
+@inject VoteService _voteService
 
 <div class="post-header app-card">
   <div class="ph-wrap">
     <div class="ph-vote">
       <button type="button"
-              class="vote-btn @(MyVote==1?"up-active":null)"
+              class="vote-btn @( _myVote==1 ? "up-active" : null)"
               aria-label="Upvote"
-              aria-pressed="@(MyVote==1)"
-              disabled="@VoteDisabled"
-              @onclick="() => Vote(+1)">▲</button>
+              aria-pressed="@(_myVote==1)"
+              disabled="@_voteDisabled || CurrentUserId<=0"
+              @onclick="() => HandleVote(+1)">▲</button>
 
-      <div class="ph-score" aria-live="polite">@Score</div>
+      <div class="ph-score" aria-live="polite">@_score</div>
 
       <button type="button"
-              class="vote-btn @(MyVote==-1?"down-active":null)"
+              class="vote-btn @( _myVote==-1 ? "down-active" : null)"
               aria-label="Downvote"
-              aria-pressed="@(MyVote==-1)"
-              disabled="@VoteDisabled"
-              @onclick="() => Vote(-1)">▼</button>
+              aria-pressed="@(_myVote==-1)"
+              disabled="@_voteDisabled || CurrentUserId<=0"
+              @onclick="() => HandleVote(-1)">▼</button>
     </div>
 
     <div class="ph-body">
@@ -58,12 +61,6 @@
                 {
                   <button type="button" class="ph-menu-item danger" role="menuitem" @onclick="() => { _menuOpen=false; OnDeletePost.InvokeAsync(Id);}">Delete post</button>
                 }
-                @if (CanLockTopic)
-                {
-                  <button type="button" class="ph-menu-item" role="menuitem" @onclick="() => { _menuOpen=false; OnToggleLockTopic.InvokeAsync(!TopicLocked);}">
-                    @(TopicLocked ? "Unlock topic" : "Lock topic")
-                  </button>
-                }
               </div>
             }
           </div>
@@ -84,25 +81,65 @@
   [Parameter] public string AuthorName { get; set; } = string.Empty;
   [Parameter] public DateTime CreatedAt { get; set; }
 
+  // početne vrednosti; komponenta dalje drži **sopstveno** stanje (_score/_myVote/_voteDisabled)
   [Parameter] public int Score { get; set; }
-  [Parameter] public int? MyVote { get; set; } // -1/0/+1
-  [Parameter] public bool VoteDisabled { get; set; }
+  [Parameter] public int? MyVote { get; set; }
 
   [Parameter] public bool CanEditPost { get; set; } = false;
   [Parameter] public bool CanDeletePost { get; set; } = false;
-  [Parameter] public bool CanLockTopic { get; set; } = false;
 
-  [Parameter] public EventCallback<(int postId, int value)> OnVote { get; set; }
+  [Parameter] public int? CurrentUserId { get; set; } = 0;
+
   [Parameter] public EventCallback<int> OnReport { get; set; }
   [Parameter] public EventCallback<int> OnEditPost { get; set; }
   [Parameter] public EventCallback<int> OnDeletePost { get; set; }
-  [Parameter] public EventCallback<bool> OnToggleLockTopic { get; set; }
 
   bool _menuOpen;
 
-  bool ShowActionsMenu => CanEditPost || CanDeletePost || CanLockTopic;
+  // lokalno stanje za Voting
+  int _score;
+  int? _myVote;
+  bool _voteDisabled;
 
-  Task Vote(int v) => OnVote.InvokeAsync((Id, v));
+  bool ShowActionsMenu => CanEditPost || CanDeletePost;
+
+  protected override void OnParametersSet()
+  {
+    // sync initial props u lokalno stanje (idempotentno)
+    _score = Score;
+    _myVote = MyVote;
+  }
+
+  async Task HandleVote(int v)
+  {
+    if (CurrentUserId <= 0) return;
+
+    var old = _myVote ?? 0;
+    var next = (old == v) ? 0 : v;
+
+    _voteDisabled = true;
+    _myVote = next == 0 ? (int?)null : next;
+    _score += (next - old);
+    StateHasChanged();
+
+    try
+    {
+      var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Post, Id, CurrentUserId.Value, next);
+      _score = newScore;
+    }
+    catch
+    {
+      // revert
+      _myVote = old == 0 ? (int?)null : old;
+      _score -= (next - old);
+    }
+    finally
+    {
+      _voteDisabled = false;
+      StateHasChanged();
+    }
+  }
+
   void ToggleMenu() => _menuOpen = !_menuOpen;
 
   static string TimeAgo(DateTime utc)
@@ -118,7 +155,6 @@
 }
 
 <style>
-  /* POST HEADER */
   .post-header{ padding:12px }
   .ph-wrap{ display:flex; gap:12px }
   .ph-vote{ width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:2px 0 }

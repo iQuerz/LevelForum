@@ -18,4 +18,6 @@ public class Post : _IdentifiableEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     public bool IsDeleted { get; set; } = false;
+    [NotMapped] public int Score { get; set; }
+    [NotMapped] public int MyVote { get; set; }
 }

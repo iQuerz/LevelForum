@@ -1,4 +1,9 @@
 @using System.Collections.Generic
+@using System.Security.Claims
+@using Entities = LevelForum.Data.Entities
+@using LevelForum.Data.Services
+@using LevelForum.Infrastructure
+@inject VoteService _voteService
 
 <div class="post-list">
   @if (IsLoading && (Items is null || !Items.Any()))
@@ -12,19 +17,37 @@
   {
     @foreach (var p in Items)
     {
-      <PostCard Id="@p.Id"
-                Title="@p.Title"
-                TopicId="@p.TopicId"
-                TopicTitle="@p.TopicTitle"
-                AuthorName="@p.AuthorName"
-                CreatedAt="@p.CreatedAt"
-                Score="@p.Score"
-                MyVote="@p.MyVote"
-                CommentsCount="@p.CommentsCount"
-                TopicLocked="@p.TopicLocked"
-                VoteDisabled="@p.VoteDisabled"
-                OnVote="OnVote"
-                OnReport="OnReport" />
+      <div class="app-card post-card">
+        <div class="vote-col">
+          <button class="vote-btn up"
+                  disabled="@IsVoteDisabled(p)"
+                  aria-pressed="@(p.MyVote == 1)"
+                  @onclick="() => HandleVote(p.Id, 1)">
+            ▲
+          </button>
+          <div class="score">@p.Score</div>
+          <button class="vote-btn down"
+                  disabled="@IsVoteDisabled(p)"
+                  aria-pressed="@(p.MyVote == -1)"
+                  @onclick="() => HandleVote(p.Id, -1)">
+            ▼
+          </button>
+        </div>
+
+        <div class="content-col">
+          <div class="title-row">
+            <a class="post-title" href="@($"/post/{p.Id}")">@p.Title</a>
+          </div>
+          <div class="meta-row">
+            <span class="chip">@p.TopicTitle</span>
+            <span>• by @p.AuthorName</span>
+            <span>• @p.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+            @if (p.TopicLocked) { <span class="lock-pill">Locked</span> }
+            <span style="flex:1"></span>
+            <button class="linklike" @onclick="() => OnReport.InvokeAsync(p.Id)">Report</button>
+          </div>
+        </div>
+      </div>
     }
 
     @if (ShowLoadMore)
@@ -46,22 +69,73 @@
 </div>
 
 @code{
+  [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+  protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+  int? CurrentUserId => UserClaims.UserId();
+  
   public record PostListItem(
       int Id, string Title, int TopicId, string TopicTitle,
       string AuthorName, DateTime CreatedAt, int Score, int? MyVote,
       int CommentsCount, bool TopicLocked, bool VoteDisabled = false);
 
-  [Parameter] public IEnumerable<PostListItem>? Items { get; set; }
+  [Parameter] public IList<PostListItem>? Items { get; set; }
 
   [Parameter] public bool IsLoading { get; set; } = false;
   [Parameter] public bool ShowLoadMore { get; set; } = true;
   [Parameter] public bool IsLoadingMore { get; set; } = false;
 
   [Parameter] public EventCallback OnLoadMore { get; set; }
+  // Optional external notif; we do the vote implementation here.
   [Parameter] public EventCallback<(int postId, int value)> OnVote { get; set; }
   [Parameter] public EventCallback<int> OnReport { get; set; }
 
   Task LoadMore() => OnLoadMore.InvokeAsync();
+
+  bool IsVoteDisabled(PostListItem it) => it.VoteDisabled || it.TopicLocked || CurrentUserId <= 0;
+
+  async Task HandleVote(int postId, int value)
+  {
+      if (Items is null) return;
+      var idx = Items.ToList().FindIndex(p => p.Id == postId);
+      if (idx < 0 || CurrentUserId <= 0) return;
+
+      var it = Items[idx];
+      var oldVote = it.MyVote ?? 0;
+      var next = (oldVote == value) ? 0 : value;
+
+      // optimistic UI + disable while request is running
+      Items[idx] = it with
+      {
+          VoteDisabled = true,
+          MyVote = next == 0 ? (int?)null : next,
+          Score = it.Score + (next - oldVote)
+      };
+      StateHasChanged();
+
+      try
+      {
+          var newScore = await _voteService.ToggleVoteAsync(
+              Entities.ContentType.Post, postId, CurrentUserId.Value, next);
+
+          Items[idx] = Items[idx] with
+          {
+              Score = newScore,
+              VoteDisabled = false
+          };
+      }
+      catch
+      {
+          // revert on failure
+          Items[idx] = it;
+      }
+      finally
+      {
+          StateHasChanged();
+      }
+
+      if (OnVote.HasDelegate)
+          await OnVote.InvokeAsync((postId, value));
+  }
 }
 
 <style>
@@ -71,7 +145,7 @@
     border-radius:10px; padding:8px 14px; cursor:pointer }
   .btn-ghost:hover{ background:rgba(255,255,255,.06) }
 
-  /* SKELETONS (reuse your shimmer base if present) */
+  /* SKELETONS */
   .post-skel{ padding:12px }
   .skel{ background:linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.12) 37%, rgba(255,255,255,.06) 63%);
     background-size:400% 100%; animation:shimmer 1.2s ease-in-out infinite; border-radius:8px; height:14px }
@@ -79,4 +153,18 @@
   .skel-line{ height:14px; width:100%; margin:6px 0 }
   .w-85{ width:85% }
   @@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+
+  /* Post card */
+  .post-card{ display:flex; gap:12px; padding:12px }
+  .vote-col{ display:flex; flex-direction:column; align-items:center; gap:6px; width:42px }
+  .vote-btn{ border:1px solid var(--border-color); background:transparent; border-radius:8px; width:34px; height:28px; cursor:pointer }
+  .vote-btn[disabled]{ opacity:.4; cursor:not-allowed }
+  .score{ font-weight:600 }
+  .content-col{ display:flex; flex-direction:column; gap:6px; flex:1 }
+  .title-row{ font-size:1.05rem; font-weight:650 }
+  .post-title{ color:var(--text); text-decoration:none }
+  .post-title:hover{ text-decoration:underline }
+  .meta-row{ display:flex; align-items:center; gap:8px; font-size:.9rem; opacity:.85 }
+  .linklike{ background:transparent; border:none; color:var(--text); text-decoration:underline; cursor:pointer }
+  .lock-pill{ border:1px solid var(--border-color); padding:2px 6px; border-radius:999px; font-size:.8rem }
 </style>

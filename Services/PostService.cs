@@ -44,44 +44,186 @@ public sealed class PostService
             return post;
         }, "PostService.CreateAsync", new { topicId, authorId }, ct);
 
-    public Task<Post?> GetByIdAsync(int id, CancellationToken ct = default)
+    public Task<Post?> GetByIdAsync(int id, int? userId = null, CancellationToken ct = default)
         => _safe.ExecuteAsync<Post?>(async ct =>
         {
             await using var db = await _factory.CreateDbContextAsync(ct);
-            return await db.Posts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted, ct);
-        }, "PostService.GetByIdAsync", new { id }, ct);
 
-    public Task<PagedResult<Post>> QueryByTopicAsync(int topicId, string? titleQuery, string sort = "new", int page = 1, int pageSize = 20, CancellationToken ct = default)
-        => _safe.ExecuteAsync<PagedResult<Post>>(async ct =>
-        {
-            await using var db = await _factory.CreateDbContextAsync(ct);
-            var q = db.Posts.AsNoTracking()
+            var row = await db.Posts.AsNoTracking()
                 .Include(p => p.Topic)
                 .Include(p => p.Author)
-                .Where(p => p.TopicId == topicId && !p.IsDeleted);
+                .Where(p => p.Id == id && !p.IsDeleted)
+                .Select(p => new
+                {
+                    Post = p,
+                    Score = db.Votes
+                        .Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id)
+                        .Select(v => (int?)v.Value)
+                        .Sum() ?? 0,
+                    MyVote = userId == null
+                        ? 0
+                        : db.Votes
+                            .Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id && v.UserId == userId.Value)
+                            .Select(v => v.Value)
+                            .FirstOrDefault()
+                })
+                .FirstOrDefaultAsync(ct);
 
-            if (!string.IsNullOrWhiteSpace(titleQuery))
+            if (row is null) return null;
+
+            row.Post.Score = row.Score;
+            row.Post.MyVote = row.MyVote;
+            return row.Post;
+        }, "PostService.GetByIdAsync", new { id, userId }, ct);
+
+
+
+
+    public Task<PagedResult<Post>> QueryByTopicAsync(
+    int topicId,
+    string? titleQuery,
+    string sort = "new",
+    int page = 1,
+    int pageSize = 20,
+    int? userId = null,
+    CancellationToken ct = default)
+    => _safe.ExecuteAsync<PagedResult<Post>>(async ct =>
+    {
+        await using var db = await _factory.CreateDbContextAsync(ct);
+        var q = db.Posts.AsNoTracking()
+            .Include(p => p.Topic)
+            .Include(p => p.Author)
+            .Where(p => p.TopicId == topicId && !p.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(titleQuery))
+        {
+            var pattern = $"%{titleQuery}%";
+            q = q.Where(p => EF.Functions.Like(p.Title, pattern));
+        }
+
+        q = sort switch
+        {
+            "top" => q.OrderByDescending(p =>
+                        db.Votes.Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id)
+                                .Select(v => (int?)v.Value)
+                                .Sum() ?? 0)
+                     .ThenByDescending(p => p.CreatedAt),
+            "active" => q.OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt),
+            _ => q.OrderByDescending(p => p.CreatedAt)
+        };
+
+        var total = await q.CountAsync(ct);
+
+        var rows = await q
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new
             {
-                var pattern = $"%{titleQuery}%";
-                q = q.Where(p => EF.Functions.Like(p.Title, pattern));
-            }
+                Post = p,
+                Score = db.Votes
+                    .Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id)
+                    .Select(v => (int?)v.Value)
+                    .Sum() ?? 0,
+                MyVote = userId == null
+                    ? 0
+                    : db.Votes
+                        .Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id && v.UserId == userId.Value)
+                        .Select(v => v.Value)
+                        .FirstOrDefault()
+            })
+            .ToListAsync(ct);
 
-            q = sort switch
+        var items = rows.Select(r =>
+        {
+            r.Post.Score = r.Score;
+            r.Post.MyVote = r.MyVote;
+            return r.Post;
+        }).ToList();
+
+        return new PagedResult<Post> { Items = items, Total = total, Page = page, PageSize = pageSize };
+    }, "PostService.QueryByTopicAsync", new { topicId, titleQuery, sort, page, pageSize, userId }, ct);
+
+
+
+    public Task<PagedResult<Post>> QueryAsync(
+    string? titleQuery,
+    int? userId = null,
+    string sort = "new",
+    int page = 1,
+    int pageSize = 20,
+    CancellationToken ct = default)
+    => _safe.ExecuteAsync<PagedResult<Post>>(async ct =>
+    {
+        await using var db = await _factory.CreateDbContextAsync(ct);
+
+        var followedTopicIds = userId is null
+            ? new List<int>()
+            : await db.TopicFollows.Where(f => f.UserId == userId)
+                .Select(f => f.TopicId)
+                .ToListAsync(ct);
+
+        var q = db.Posts.AsNoTracking()
+            .Include(p => p.Topic)
+            .Include(p => p.Author)
+            .Where(p => !p.IsDeleted && !p.Topic.IsDeleted
+                                     && (!followedTopicIds.Any() || followedTopicIds.Contains(p.TopicId)));
+
+        if (!string.IsNullOrWhiteSpace(titleQuery))
+        {
+            var pattern = $"%{titleQuery}%";
+            q = q.Where(p => EF.Functions.Like(p.Title, pattern));
+        }
+
+        q = sort switch
+        {
+            "top" => q.OrderByDescending(p =>
+                        db.Votes.Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id)
+                                .Select(v => (int?)v.Value)
+                                .Sum() ?? 0)
+                     .ThenByDescending(p => p.CreatedAt),
+            "active" => q.OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt),
+            _ => q.OrderByDescending(p => p.CreatedAt)
+        };
+
+        var total = await q.CountAsync(ct);
+
+        var rows = await q
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new
             {
-                "top" => q.OrderByDescending(p =>
-                            db.Votes.Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id)
-                                    .Select(v => (int?)v.Value)
-                                    .Sum() ?? 0)
-                         .ThenByDescending(p => p.CreatedAt),
-                "active" => q.OrderByDescending(p => p.UpdatedAt ?? p.CreatedAt),
-                _ => q.OrderByDescending(p => p.CreatedAt)
-            };
+                Post = p,
+                Score = db.Votes
+                    .Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id)
+                    .Select(v => (int?)v.Value)
+                    .Sum() ?? 0,
+                MyVote = userId == null
+                    ? 0
+                    : db.Votes
+                        .Where(v => v.TargetType == ContentType.Post && v.TargetId == p.Id && v.UserId == userId.Value)
+                        .Select(v => v.Value)
+                        .FirstOrDefault()
+            })
+            .ToListAsync(ct);
 
-            var total = await q.CountAsync(ct);
-            var items = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
-            return new PagedResult<Post> { Items = items, Total = total, Page = page, PageSize = pageSize };
-        }, "PostService.QueryByTopicAsync", new { topicId, titleQuery, sort, page, pageSize }, ct);
+        var items = rows.Select(r =>
+        {
+            r.Post.Score = r.Score;
+            r.Post.MyVote = r.MyVote;
+            return r.Post;
+        }).ToList();
 
+        return new PagedResult<Post>
+        {
+            Items = items,
+            Total = total,
+            Page = page,
+            PageSize = pageSize
+        };
+    }, "PostService.QueryAsync", new { titleQuery, userId, sort, page, pageSize }, ct);
+
+
+    
     public Task<Post> UpdateAsync(int id, string? title, string? body, CancellationToken ct = default)
         => _safe.ExecuteAsync<Post>(async ct =>
         {

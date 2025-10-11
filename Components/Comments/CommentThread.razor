@@ -1,17 +1,16 @@
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components
-@using System.Collections.Generic
+@using LevelForum.Data.Services
+@using LevelForum.Infrastructure
+@using Entities = LevelForum.Data.Entities
+@inject CommentService _commentService
+@inject VoteService _voteService
 
 <div class="comment-thread">
-  @if (IsLoading && (Root is null || !Root.Any()))
+  @if (IsLoading && (Items is null || !Items.Any()))
   {
-    <div class="comment-skel">
-      <div class="skel skel-line"></div>
-      <div class="skel skel-line w-85"></div>
-    </div>
-    <div class="comment-skel">
-      <div class="skel skel-line"></div>
-      <div class="skel skel-line w-85"></div>
-    </div>
+    <div class="comment-skel"><div class="skel skel-line"></div><div class="skel skel-line w-85"></div></div>
+    <div class="comment-skel"><div class="skel skel-line"></div><div class="skel skel-line w-85"></div></div>
   }
   else if (Root is not null && Root.Any())
   {
@@ -25,14 +24,14 @@
                     MyVote="@c.MyVote"
                     IsOwn="@c.IsOwn"
                     CanModerate="@c.CanModerate"
-                    CanReply="CanReply"
+                    CanReply="@(!TopicLocked)"
                     MaxChars="@MaxChars"
                     ChildComments="GetChildren(c.Id)"
-                    OnVote="OnVote"
-                    OnReport="OnReport"
-                    OnReply="OnReply"
-                    OnEdit="OnEdit"
-                    OnDelete="OnDelete" />
+                    OnVote="VoteComment"
+                    OnReport="ReportComment"
+                    OnReply="ReplyTo"
+                    OnEdit="EditComment"
+                    OnDelete="DeleteComment" />
     }
 
     @if (HasMore)
@@ -54,39 +53,183 @@
 </div>
 
 @code{
+  [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+  protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+  int? CurrentUserId => UserClaims.UserId();
+  
+  
   public record CommentVm(
     int Id, int? ParentId, string AuthorName, string Body, DateTime CreatedAt,
     int Score, int? MyVote, bool IsOwn, bool CanModerate);
 
-  [Parameter] public IEnumerable<CommentVm>? Items { get; set; } // all comments (flat)
-  [Parameter] public bool IsLoading { get; set; } = false;
+  [Parameter] public int PostId { get; set; }
+  [Parameter] public bool TopicLocked { get; set; }
 
-  [Parameter] public bool HasMore { get; set; } = false;
-  [Parameter] public bool IsLoadingMore { get; set; } = false;
-  [Parameter] public EventCallback OnLoadMore { get; set; }
-
-  [Parameter] public bool CanReply { get; set; } = true;
   [Parameter] public int MaxChars { get; set; } = 2000;
 
-  [Parameter] public EventCallback<(int commentId, int value)> OnVote { get; set; }
-  [Parameter] public EventCallback<int> OnReport { get; set; }
-  [Parameter] public EventCallback<(int parentId, string text)> OnReply { get; set; }
-  [Parameter] public EventCallback<(int commentId, string text)> OnEdit { get; set; }
-  [Parameter] public EventCallback<int> OnDelete { get; set; }
+  // internal state
+  public List<CommentVm> Items { get; set; } = new();
+  [Parameter] public bool IsLoading { get; set; } = true;
 
-  IEnumerable<CommentVm> Root => Items?.Where(c => c.ParentId is null) ?? Enumerable.Empty<CommentVm>();
+  public bool HasMore { get; set; } = false;
+  public bool IsLoadingMore { get; set; } = false;
 
+  int _skip = 0;
+  const int _take = 100;
+
+  protected override async Task OnParametersSetAsync()
+  {
+    if (Items.Count == 0)
+    {
+      await LoadMore();
+      IsLoading = false;
+    }
+  }
+
+  IEnumerable<CommentVm> Root => Items.Where(c => c.ParentId is null);
   IEnumerable<CommentBlock.CommentVm>? GetChildren(int parentId)
-    => Items?
-         .Where(c => c.ParentId == parentId)
-         .Select(c => new CommentBlock.CommentVm(c.Id, c.AuthorName, c.Body, c.CreatedAt, c.Score, c.MyVote, c.IsOwn, c.CanModerate))
-         .ToList();
+    => Items.Where(c => c.ParentId == parentId)
+            .Select(c => new CommentBlock.CommentVm(c.Id, c.AuthorName, c.Body, c.CreatedAt, c.Score, c.MyVote, c.IsOwn, c.CanModerate))
+            .ToList();
 
-  Task LoadMore() => OnLoadMore.InvokeAsync();
+  public async Task LoadMore()
+  {
+    IsLoadingMore = true;
+    StateHasChanged();
+
+    var batch = await _commentService.GetFlatForPostAsync(PostId, _take, _skip, CurrentUserId);
+    _skip += batch.Count;
+
+    foreach (var c in batch)
+    {
+      var authorName = c.Author?.Username ?? $"u/{c.AuthorId}";
+      Items.Add(new CommentVm(
+        Id: c.Id,
+        ParentId: c.ParentCommentId,
+        AuthorName: authorName,
+        Body: c.Body,
+        CreatedAt: c.CreatedAt,
+        Score: c.Score,
+        MyVote: c.MyVote,
+        IsOwn: c.AuthorId == CurrentUserId,
+        CanModerate: UserClaims.HasAtLeastRole(Entities.AppRole.Moderator)
+      ));
+    }
+
+    HasMore = batch.Count == _take;
+    IsLoadingMore = false;
+  }
+  
+  async Task VoteComment((int commentId, int value) ev)
+  {
+    var idx = Items.FindIndex(x => x.Id == ev.commentId);
+    if (idx < 0 || !CurrentUserId.HasValue) return;
+
+    var it = Items[idx];
+    var old = it.MyVote ?? 0;
+    var next = (old == ev.value) ? 0 : ev.value;
+
+    Items[idx] = it with { MyVote = next == 0 ? (int?)null : next, Score = it.Score + (next - old) };
+    StateHasChanged();
+
+    try
+    {
+      var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Comment, ev.commentId, CurrentUserId.Value, next);
+      Items[idx] = Items[idx] with { Score = newScore };
+    }
+    catch
+    {
+      // revert
+      Items[idx] = it;
+    }
+    finally
+    {
+      StateHasChanged();
+    }
+  }
+
+  Task ReportComment(int id) => Task.CompletedTask; // wire to moderation later
+
+  async Task EditComment((int commentId, string text) ev)
+  {
+    var idx = Items.FindIndex(x => x.Id == ev.commentId);
+    if (idx < 0) return;
+
+    var updated = await _commentService.UpdateAsync(ev.commentId, ev.text);
+    var it = Items[idx];
+    Items[idx] = it with { Body = updated.Body };
+    StateHasChanged();
+  }
+
+  async Task DeleteComment(int id)
+  {
+    await _commentService.SoftDeleteAsync(id);
+    Items.RemoveAll(c => c.Id == id || c.ParentId == id);
+    StateHasChanged();
+  }
+  
+  public async Task ReloadFromStart()
+  {
+    Items.Clear();
+    _skip = 0;
+    HasMore = false;
+    IsLoading = true;
+    StateHasChanged();
+
+    await LoadMore();
+
+    IsLoading = false;
+    StateHasChanged();
+  }
+  
+  public async Task ReloadChildrenAsync(int parentId)
+  {
+    var fresh = await _commentService.GetChildrenAsync(parentId, CurrentUserId);
+    Items.RemoveAll(c => c.ParentId == parentId);
+
+    foreach (var c in fresh)
+    {
+      Items.Add(new CommentVm(
+        Id: c.Id,
+        ParentId: c.ParentCommentId,
+        AuthorName: c.Author.Username,
+        Body: c.Body,
+        CreatedAt: c.CreatedAt,
+        Score: c.Score,
+        MyVote: c.MyVote,
+        IsOwn: c.AuthorId == CurrentUserId,
+        CanModerate: UserClaims.HasAtLeastRole(Entities.AppRole.Moderator)
+      ));
+    }
+
+    StateHasChanged();
+  }
+
+  async Task ReplyTo((int parentId, string text) ev)
+  {
+    if (CurrentUserId <= 0) return;
+
+    var reply = await _commentService.ReplyAsync(ev.parentId, CurrentUserId.Value, ev.text);
+
+    Items.Add(new CommentVm(
+      Id: reply.Id,
+      ParentId: reply.ParentCommentId,
+      AuthorName: "Me",
+      Body: reply.Body,
+      CreatedAt: reply.CreatedAt,
+      Score: reply.Score,
+      MyVote: reply.MyVote,
+      IsOwn: true,
+      CanModerate: false
+    ));
+    await ReloadChildrenAsync(ev.parentId);
+  }
+
+
+
 }
 
 <style>
-  /* THREAD skeletons */
   .comment-thread .comment-skel{ padding:12px; border-bottom:1px solid var(--border-color) }
   .skel-line{ height:14px; width:100%; border-radius:8px;
     background:linear-gradient(90deg, rgba(255,255,255,.06) 25%, rgba(255,255,255,.12) 37%, rgba(255,255,255,.06) 63%);

@@ -2,7 +2,7 @@ namespace LevelForum.Data.Entities;
 
 public enum AppRole
 {
-    Guest,
+    None,
     User,
     Moderator,
     Owner,

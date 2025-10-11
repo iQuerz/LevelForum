@@ -81,6 +81,82 @@ public sealed class TopicService
             return new PagedResult<Topic> { Items = items, Total = total, Page = page, PageSize = pageSize };
         }, "TopicService.SearchAsync", new { titleQuery, page, pageSize }, ct);
 
+    public Task<List<Topic>> GetFollowingAsync(int userId, CancellationToken ct = default)
+    => _safe.ExecuteAsync<List<Topic>>(async ct =>
+    {
+        await using var db = await _factory.CreateDbContextAsync(ct);
+
+        // Sve teme koje user prati, ali samo aktivne (neobrisane / nebanovane)
+        var items = await db.TopicFollows
+            .AsNoTracking()
+            .Where(tf => tf.UserId == userId &&
+                         !tf.Topic.IsDeleted &&
+                         !tf.Topic.IsBanned)
+            .OrderByDescending(tf => tf.Topic.LastActivityAt)
+            .ThenBy(tf => tf.Topic.Title)
+            .Select(tf => tf.Topic)
+            .ToListAsync(ct);
+
+        return items;
+    }, "TopicService.GetFollowingAsync", new { userId }, ct);
+
+public Task<List<Topic>> GetForSidebarAsync(int? userId = null, CancellationToken ct = default)
+    => _safe.ExecuteAsync<List<Topic>>(async ct =>
+    {
+        await using var db = await _factory.CreateDbContextAsync(ct);
+
+        const int TAKE = 15; // koliko prikazujemo u sidebaru
+
+        // Osnovni skup: samo aktivne teme
+        var topicsQ = db.Topics
+            .AsNoTracking()
+            .Where(t => !t.IsDeleted && !t.IsBanned);
+
+        // Popularnost = broj follower-a (TopicFollows.Count za dati Topic)
+        var popularityQ =
+            from t in topicsQ
+            join tf in db.TopicFollows.AsNoTracking() on t.Id equals tf.TopicId into g
+            select new
+            {
+                Topic = t,
+                Followers = g.Count()
+            };
+
+        if (userId is int uid)
+        {
+            // ako je prosleđen userId, predlagati teme koje user NE prati
+            var followedIdsQ = db.TopicFollows
+                .AsNoTracking()
+                .Where(tf => tf.UserId == uid)
+                .Select(tf => tf.TopicId);
+
+            var suggestions = await popularityQ
+                .Where(x => !followedIdsQ.Contains(x.Topic.Id))
+                .OrderByDescending(x => x.Followers)
+                .ThenByDescending(x => x.Topic.LastActivityAt)
+                .ThenBy(x => x.Topic.Title)
+                .Take(TAKE)
+                .Select(x => x.Topic)
+                .ToListAsync(ct);
+
+            return suggestions;
+        }
+        else
+        {
+            // bez user-a: čisto najpopularnije teme
+            var top = await popularityQ
+                .OrderByDescending(x => x.Followers)
+                .ThenByDescending(x => x.Topic.LastActivityAt)
+                .ThenBy(x => x.Topic.Title)
+                .Take(TAKE)
+                .Select(x => x.Topic)
+                .ToListAsync(ct);
+
+            return top;
+        }
+    }, "TopicService.GetForSidebarAsync", new { userId }, ct);
+
+    
     public Task<Topic> UpdateAsync(int id, string? title, string? description, CancellationToken ct = default)
         => _safe.ExecuteAsync<Topic>(async ct =>
         {

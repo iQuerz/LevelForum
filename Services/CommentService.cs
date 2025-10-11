@@ -53,25 +53,162 @@ public sealed class CommentService
             return cmt;
         }, "CommentService.CreateAsync", new { postId, authorId, parentCommentId }, ct);
 
-    public Task<Comment?> GetByIdAsync(int id, CancellationToken ct = default)
+    public Task<Comment> ReplyAsync(int parentCommentId, int authorId, string body, CancellationToken ct = default)
+        => _safe.ExecuteAsync<Comment>(async ct =>
+        {
+            await using var db = await _factory.CreateDbContextAsync(ct);
+
+            var parent = await db.Comments
+                             .AsNoTracking()
+                             .FirstOrDefaultAsync(c => c.Id == parentCommentId && !c.IsDeleted, ct)
+                         ?? throw new KeyNotFoundException("Parent comment not found.");
+
+            var post = await db.Posts
+                           .AsNoTracking()
+                           .FirstOrDefaultAsync(p => p.Id == parent.PostId && !p.IsDeleted, ct)
+                       ?? throw new KeyNotFoundException("Post not found.");
+
+            var topic = await db.Topics.FirstAsync(t => t.Id == post.TopicId, ct);
+            if (topic.IsLocked) throw new InvalidOperationException("Topic is locked.");
+
+            var authorExists = await db.AppUsers.AnyAsync(u => u.Id == authorId && !u.IsDeleted, ct);
+            if (!authorExists) throw new KeyNotFoundException("Author not found.");
+
+            // dozvoljena je samo 1 nivo u dubinu
+            if (parent.ParentCommentId.HasValue)
+                throw new InvalidOperationException("Only one nested level is allowed.");
+
+            var reply = new Comment
+            {
+                PostId = parent.PostId,
+                AuthorId = authorId,
+                ParentCommentId = parentCommentId,
+                Body = body,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            db.Comments.Add(reply);
+            topic.LastActivityAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+
+            return reply;
+        }, "CommentService.ReplyAsync", new { parentCommentId, authorId }, ct);
+
+    
+    public Task<Comment?> GetByIdAsync(int id, int? userId = null, CancellationToken ct = default)
         => _safe.ExecuteAsync<Comment?>(async ct =>
         {
             await using var db = await _factory.CreateDbContextAsync(ct);
-            return await db.Comments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id && !c.IsDeleted, ct);
-        }, "CommentService.GetByIdAsync", new { id }, ct);
 
-    public Task<IReadOnlyList<Comment>> GetFlatForPostAsync(int postId, int take = 200, int skip = 0, CancellationToken ct = default)
+            var row = await db.Comments.AsNoTracking()
+                .Where(c => c.Id == id && !c.IsDeleted)
+                .Select(c => new
+                {
+                    Comment = c,
+                    Score = db.Votes
+                        .Where(v => v.TargetType == ContentType.Comment && v.TargetId == c.Id)
+                        .Select(v => (int?)v.Value)
+                        .Sum() ?? 0,
+                    MyVote = userId == null
+                        ? 0
+                        : db.Votes
+                            .Where(v => v.TargetType == ContentType.Comment && v.TargetId == c.Id && v.UserId == userId.Value)
+                            .Select(v => v.Value)
+                            .FirstOrDefault()
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (row is null) return null;
+
+            row.Comment.Score = row.Score;
+            row.Comment.MyVote = row.MyVote;
+            return row.Comment;
+        }, "CommentService.GetByIdAsync", new { id, userId }, ct);
+
+
+    public Task<IReadOnlyList<Comment>> GetFlatForPostAsync(
+        int postId,
+        int take = 200,
+        int skip = 0,
+        int? userId = null,
+        CancellationToken ct = default)
         => _safe.ExecuteAsync<IReadOnlyList<Comment>>(async ct =>
         {
             await using var db = await _factory.CreateDbContextAsync(ct);
-            var items = await db.Comments.AsNoTracking()
+
+            var q = db.Comments.AsNoTracking()
+                .Include(c => c.Author)
                 .Where(c => c.PostId == postId && !c.IsDeleted)
-                .OrderBy(c => c.CreatedAt)
+                .OrderBy(c => c.CreatedAt);
+
+            var rows = await q
                 .Skip(skip)
                 .Take(take)
+                .Select(c => new
+                {
+                    Comment = c,
+                    Score = db.Votes
+                        .Where(v => v.TargetType == ContentType.Comment && v.TargetId == c.Id)
+                        .Select(v => (int?)v.Value)
+                        .Sum() ?? 0,
+                    MyVote = userId == null
+                        ? 0
+                        : db.Votes
+                            .Where(v => v.TargetType == ContentType.Comment && v.TargetId == c.Id && v.UserId == userId.Value)
+                            .Select(v => v.Value)
+                            .FirstOrDefault()
+                })
                 .ToListAsync(ct);
-            return items;
-        }, "CommentService.GetFlatForPostAsync", new { postId, take, skip }, ct);
+
+            foreach (var r in rows)
+            {
+                r.Comment.Score = r.Score;
+                r.Comment.MyVote = r.MyVote;
+            }
+
+            return rows.Select(r => r.Comment).ToList();
+        }, "CommentService.GetFlatForPostAsync", new { postId, take, skip, userId }, ct);
+
+
+    public Task<IReadOnlyList<Comment>> GetChildrenAsync(int parentId, int? userId = null, CancellationToken ct = default)
+        => _safe.ExecuteAsync<IReadOnlyList<Comment>>(async ct =>
+        {
+            await using var db = await _factory.CreateDbContextAsync(ct);
+
+            var q = db.Comments.AsNoTracking()
+                .Include(c => c.Author)
+                .Where(c => c.ParentCommentId == parentId && !c.IsDeleted)
+                .OrderBy(c => c.CreatedAt);
+
+            var rows = await q
+                .Select(c => new
+                {
+                    Comment = c,
+                    Score = db.Votes
+                        .Where(v => v.TargetType == ContentType.Comment && v.TargetId == c.Id)
+                        .Select(v => (int?)v.Value)
+                        .Sum() ?? 0,
+                    MyVote = userId == null
+                        ? 0
+                        : db.Votes
+                            .Where(v => v.TargetType == ContentType.Comment && v.TargetId == c.Id && v.UserId == userId.Value)
+                            .Select(v => (int)v.Value)
+                            .FirstOrDefault()
+                })
+                .ToListAsync(ct);
+
+            foreach (var r in rows)
+            {
+                r.Comment.Score = r.Score;
+                r.Comment.MyVote = r.MyVote;
+            }
+
+            return rows.Select(r => r.Comment).ToList();
+        }, "CommentService.GetChildrenAsync", new { parentId, userId }, ct);
+
+
 
     public Task<Comment> UpdateAsync(int id, string body, CancellationToken ct = default)
         => _safe.ExecuteAsync<Comment>(async ct =>

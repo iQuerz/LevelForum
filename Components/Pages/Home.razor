@@ -1,8 +1,11 @@
 ﻿@page "/"
+@using System.Security.Claims
 @using LevelForum.Components.Layout
 @using LevelForum.Components.Posts
 @using LevelForum.Components.Shared
-@inject NavigationManager Nav
+@using LevelForum.Data.Services
+@using LevelForum.Infrastructure
+@inject PostService _postService
 
 <PageContainer Title="Home">
     <ListToolbar SearchValue="@_q"
@@ -16,44 +19,31 @@
               ShowLoadMore="@_hasMore"
               IsLoadingMore="@_loadingMore"
               OnLoadMore="LoadMore"
-              OnVote="HandleVote"
               OnReport="HandleReport" />
 </PageContainer>
 
 @code{
+    [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+    protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+    private int? CurrentUserId => UserClaims.UserId();
     private string? _q;
     private string _sort = "new";
     private bool _loading = true;
     private bool _loadingMore;
     private bool _hasMore = true;
+    private int _page = 0;
+    private const int PageSize = 20;
 
     private List<PostList.PostListItem> _items = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        // init fake data
-        for (int i = 1; i <= 8; i++)
-        {
-            _items.Add(new PostList.PostListItem(
-                Id: i,
-                Title: $"Welcome post #{i}",
-                TopicId: 1,
-                TopicTitle: "General",
-                AuthorName: "Alice",
-                CreatedAt: DateTime.UtcNow.AddMinutes(-5 * i),
-                Score: 10 - i,
-                MyVote: 0,
-                CommentsCount: 3 + i,
-                TopicLocked: false,
-                VoteDisabled: false
-            ));
-        }
+        await LoadMore();
         _loading = false;
     }
 
     private Task DoSearch(string? q)
     {
-        // minimal demo: reset list
         _loading = true;
         StateHasChanged();
         _items = _items
@@ -67,46 +57,38 @@
     {
         _loadingMore = true;
         StateHasChanged();
-        await Task.Delay(300);
-        var start = _items.Count + 1;
-        for (int i = start; i < start + 5; i++)
+
+        var page = ++_page;
+        var res = await _postService.QueryAsync(
+            titleQuery: _q,
+            sort: _sort,
+            page: page,
+            userId: CurrentUserId,
+            pageSize: PageSize);
+
+        foreach (var item in res.Items)
         {
             _items.Add(new PostList.PostListItem(
-                Id: i,
-                Title: $"More post #{i}",
-                TopicId: 2,
-                TopicTitle: "News",
-                AuthorName: "Bob",
-                CreatedAt: DateTime.UtcNow.AddMinutes(-3 * i),
-                Score: i % 5,
-                MyVote: 0,
-                CommentsCount: i % 7,
-                TopicLocked: false,
-                VoteDisabled: false
-            ));
+                Id: item.Id,
+                Title: item.Title,
+                TopicId: item.TopicId,
+                TopicTitle: item.Topic.Title,
+                AuthorName: item.Author.Username,
+                CreatedAt: item.CreatedAt,
+                Score: item.Score,
+                MyVote: null,
+                CommentsCount: 0,
+                TopicLocked: item.Topic.IsLocked,
+                VoteDisabled: item.IsDeleted || item.Topic.IsLocked));
         }
-        _hasMore = _items.Count < 30;
+
+        _hasMore = _items.Count < res.Total;
         _loadingMore = false;
-    }
-
-    private Task HandleVote((int postId, int value) ev)
-    {
-        var idx = _items.FindIndex(p => p.Id == ev.postId);
-        if (idx < 0) return Task.CompletedTask;
-
-        var it = _items[idx];
-        var old = it.MyVote ?? 0;
-        var next = (old == ev.value) ? 0 : ev.value;
-        var delta = next - old;
-        _items[idx] = it with { MyVote = next == 0 ? (int?)null : next, Score = it.Score + delta };
-        StateHasChanged();
-        return Task.CompletedTask;
     }
 
     private Task HandleReport(int postId)
     {
-        // minimal: navigate to reports page or show alert later
-        Nav.NavigateTo($"/post/{postId}");
+        // TODO: wire to report flow
         return Task.CompletedTask;
     }
 }

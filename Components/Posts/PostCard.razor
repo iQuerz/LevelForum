@@ -51,7 +51,7 @@
   [Parameter] public string AuthorName { get; set; } = string.Empty;
   [Parameter] public DateTime CreatedAt { get; set; }
   [Parameter] public int Score { get; set; }
-  [Parameter] public int? MyVote { get; set; } // -1, 0, +1
+  [Parameter] public int? MyVote { get; set; }
   [Parameter] public int CommentsCount { get; set; }
   [Parameter] public bool TopicLocked { get; set; }
   [Parameter] public bool VoteDisabled { get; set; }
@@ -74,7 +74,7 @@
 }
 
 <style>
-  .post-card{ display:flex; gap:12px; padding:12px }
+  .post-card{ display:flex; gap:12px; padding:12px; border: 1px solid var(--border-color); }
   .post-card:hover{ box-shadow:0 8px 28px rgba(0,0,0,.25) }
   .pc-vote{ width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:2px 0 }
   .vote-btn{ width:36px; height:28px; border-radius:8px; border:1px solid var(--border-color);

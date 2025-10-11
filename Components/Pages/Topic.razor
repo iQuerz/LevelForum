@@ -1,9 +1,11 @@
 @page "/topic/{Id:int}"
+@using System.Security.Claims
 @using LevelForum.Components.Layout
 @using LevelForum.Components.Posts
 @using LevelForum.Components.Other
 @using LevelForum.Components.Shared
 @using LevelForum.Data.Services
+@using LevelForum.Infrastructure
 @using Entities = LevelForum.Data.Entities
 
 @inject PostService _postService
@@ -15,7 +17,7 @@
         <span class="chip">@TopicToView.Title</span>
         <FollowToggle IsFollowed="@_followed" OnChange="v => _followed = v" />
         <span style="flex:1"></span>
-        <LockToggle Locked="@_locked" OnToggle="v => _locked = v" />
+        <LockToggle Locked="@_locked" OnToggle="v => _locked = v" TopicId="Id" />
     </div>
 
     <div style="height:8px"></div>
@@ -36,11 +38,13 @@
 </PageContainer>
 
 @code{
+    [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+    protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+    int? CurrentUserId => UserClaims.UserId();
+    
     [Parameter] public int Id { get; set; }
     Entities.Topic TopicToView { get; set; } = new();
-    int CurrentUserId = 2;
-
-    private string _title = "Topic";
+    
     private bool _followed = true;
     private bool _locked = false;
 
@@ -56,7 +60,6 @@
     protected override async Task OnParametersSetAsync()
     {
         TopicToView = await _topicService.GetByIdAsync(Id);
-        _title = TopicToView.Title;
     }
 
     protected override async Task OnInitializedAsync()
@@ -85,6 +88,7 @@
             titleQuery: null,
             sort: _sort,
             page: ++_page,
+            userId: CurrentUserId,
             pageSize: 20);
 
         foreach (var item in newItems.Items)
@@ -96,8 +100,8 @@
                 TopicTitle: item.Topic.Title,
                 AuthorName: item.Author.Username,
                 CreatedAt: item.CreatedAt,
-                Score: 0,
-                MyVote: 0,
+                Score: item.Score,
+                MyVote: item.MyVote,
                 CommentsCount: 0,
                 TopicLocked: item.Topic.IsLocked,
                 VoteDisabled: item.IsDeleted || item.Topic.IsLocked));
@@ -110,13 +114,12 @@
     private async Task HandleVote((int postId, int value) ev)
     {
         var idx = _items.FindIndex(p => p.Id == ev.postId);
-        if (idx < 0 /*|| CurrentUserId <= 0*/) return; // uključi proveru usera ako ti treba
+        if (idx < 0 || !UserClaims.IsAuthenticated()) return;
 
         var it = _items[idx];
         var oldVote = it.MyVote ?? 0;
         var next = (oldVote == ev.value) ? 0 : ev.value;
 
-        // Optimističko ažuriranje + onemogući klik dok traje request
         _items[idx] = it with
         {
             VoteDisabled = true,
@@ -129,7 +132,7 @@
         {
             // Server vraća zbir glasova nakon izmene
             // (pretpostavka: ContentType.Post jer smo na /topic listi postova)
-            var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Post, ev.postId, CurrentUserId, next);
+            var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Post, ev.postId, UserClaims.UserId().Value, next);
 
             _items[idx] = _items[idx] with
             {

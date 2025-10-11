@@ -1,4 +1,6 @@
+@using System.Security.Claims
 @using System.Timers
+@using LevelForum.Infrastructure
 
 <div class="app-topbar">
     <div class="tb-left">
@@ -17,12 +19,25 @@
     </div>
 
     <div class="tb-right">
-        <button class="icon-btn" aria-label="Notifications">
-            🔔
-            @if (UnreadCount > 0)
-            { <span class="badge">@UnreadCount</span> }
-        </button>
-        <div class="avatar" title="Account">LF</div>
+        @if(UserClaims.IsAuthenticated())
+        {
+            <button class="icon-btn" title="Notifications">
+                🔔
+                @if (UnreadCount > 0)
+                {
+                    <span class="badge">@UnreadCount</span>
+                }
+            </button>
+            <button class="icon-btn" title="Account">👤</button>
+        }
+        else
+        {
+            <span>
+            <a href="/Identity/Account/Login">Log in</a> 
+                /
+            <a href="/Identity/Account/Register"> Register </a>
+            </span>
+        }
     </div>
 </div>
 
@@ -52,6 +67,9 @@
 </style>
 
 @code{
+    [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+    protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+    
     [Parameter] public string Title { get; set; } = "LevelForum";
     [Parameter] public int UnreadCount { get; set; }
     [Parameter] public EventCallback<string?> OnSearch { get; set; }
