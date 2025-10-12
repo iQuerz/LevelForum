@@ -15,16 +15,9 @@
       <button type="button"
               class="sort-btn @(SortValue==opt.Value ? "is-active" : null)"
               aria-pressed="@(SortValue==opt.Value)"
-              @onclick="() => ChangeSort(opt.Value)">
+              @onclick="async () => await ChangeSort(opt.Value)">
         @opt.Label
       </button>
-    }
-    @if (ShowFilter)
-    {
-      @* prostor za tvoj dodatni filter (dropdown/checkbox grupa) *@
-      <div class="ltb-filter">
-        @FilterContent
-      </div>
     }
   </div>
 </div>
@@ -34,16 +27,14 @@
 
   [Parameter] public string? SearchValue { get; set; }
   [Parameter] public EventCallback<string?> SearchValueChanged { get; set; }
-  [Parameter] public EventCallback<string?> OnSearch { get; set; }
 
   [Parameter] public string SortValue { get; set; } = "new";
   [Parameter] public EventCallback<string> SortValueChanged { get; set; }
-  [Parameter] public IEnumerable<SortOption> SortOptions { get; set; } =
-    new[] { new SortOption("new","New"), new SortOption("top","Top"), new SortOption("active","Active") };
-
-  [Parameter] public bool ShowFilter { get; set; } = false;
-  [Parameter] public RenderFragment? FilterContent { get; set; }
-
+  IEnumerable<SortOption> SortOptions { get; set; } = new[] {
+    new SortOption("new","New"),
+    new SortOption("top","Top"),
+    new SortOption("active","Active") };
+  
   Timer? _debounce;
 
   async Task OnInput(ChangeEventArgs e)
@@ -51,18 +42,19 @@
     SearchValue = e.Value?.ToString();
     await SearchValueChanged.InvokeAsync(SearchValue);
 
-    _debounce?.Stop();
-    _debounce ??= new Timer(250){ AutoReset = false };
-    _debounce.Elapsed += async (_,__) => await InvokeAsync(() => OnSearch.InvokeAsync(SearchValue));
+    if (_debounce is null)
+    {
+      _debounce = new Timer(250){ AutoReset = false };
+      _debounce.Elapsed += async (_,__) => await InvokeAsync(() => SearchValueChanged.InvokeAsync(SearchValue));
+    }
+    _debounce.Stop();
     _debounce.Start();
   }
 
   async Task ChangeSort(string v)
   {
     if (SortValue == v) return;
-    SortValue = v;
     await SortValueChanged.InvokeAsync(v);
-    await OnSearch.InvokeAsync(SearchValue); // opcionalno: re-fetch uz aktuelni query
   }
 }
 

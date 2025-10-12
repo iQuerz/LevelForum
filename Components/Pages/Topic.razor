@@ -15,18 +15,59 @@
 <PageContainer Title="@TopicToView.Title">
     <div class="app-card" style="padding:12px; display:flex; gap:8px; align-items:center;">
         <span class="chip">@TopicToView.Title</span>
-        <FollowToggle IsFollowed="@_followed" OnChange="v => _followed = v" />
+        <FollowToggle IsFollowed="@_followed" OnChange="v => _followed = v" TopicId="Id" />
         <span style="flex:1"></span>
         <LockToggle Locked="@_locked" OnToggle="v => _locked = v" TopicId="Id" />
     </div>
 
     <div style="height:8px"></div>
 
-    <ListToolbar SearchValue="@_q"
-                 SearchValueChanged="v => _q = v"
-                 OnSearch="DoSearch"
-                 SortValue="@_sort"
-                 SortValueChanged="v => _sort = v" />
+    @if (_locked)
+    {
+        <div class="compose-card warn">🔒 Tema je zaključana — dodavanje postova je onemogućeno.</div>
+    }
+    else if (UserClaims.IsAuthenticated())
+    {
+        <div class="compose-card">
+            <div class="compose-row">
+                <input class="compose-title"
+                       placeholder="Naslov posta"
+                       @bind="_newTitle"
+                       @bind:event="oninput"
+                       maxlength="@_titleMax"
+                       @onkeydown="HandleComposeKeyDown" />
+                <button class="btn-primary"
+                        disabled="@(!_canSubmit)"
+                        @onclick="SubmitNewPost">
+                    @(_submitting ? "Objavljujem…" : "Objavi")
+                </button>
+            </div>
+            <textarea class="compose-body"
+                      placeholder="Jednostavan tekst (opciono)"
+                      @bind="_newBody"
+                      @bind:event="oninput"
+                      @onkeydown="HandleComposeKeyDown"></textarea>
+            <div class="compose-meta">
+                <span class="muted">@(_newTitle?.Length ?? 0)/@_titleMax</span>
+                <span class="muted">Ctrl/⌘+Enter za objavu</span>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(_postError))
+            {
+                <div class="compose-error">@_postError</div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="compose-card info">
+            Molimo <a href="/Identity/Account/Login">ulogujte se</a> da biste dodali novi post.
+        </div>
+    }
+
+    <div style="height:8px"></div>
+
+    <ListToolbar @bind-SearchValue="@Search"
+                 @bind-SortValue="@Sort"/>
 
     <PostList Items="@_items"
               IsLoading="@_loading"
@@ -37,29 +78,101 @@
               OnReport="HandleReport" />
 </PageContainer>
 
+<style>
+    /* NOVO: stilovi za composer */
+    .compose-card{
+        background:var(--surface-2,#1b2130);
+        border:1px solid rgba(255,255,255,.08);
+        border-radius:12px;
+        padding:12px;
+        display:flex; flex-direction:column; gap:8px;
+    }
+    .compose-card.warn{ border-color:rgba(255,210,0,.35); background:rgba(255,210,0,.06) }
+    .compose-card.info{ border-color:rgba(79,70,229,.35); background:rgba(79,70,229,.06) }
+    .compose-row{ display:flex; gap:8px; align-items:center }
+    .compose-title{
+        flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+        background:var(--surface-1,#161b28); color:var(--text);
+    }
+    .compose-body{
+        min-height:96px; resize:vertical; padding:10px 12px; border-radius:10px;
+        border:1px solid rgba(255,255,255,.12);
+        background:var(--surface-1,#161b28); color:var(--text); font-family:inherit;
+    }
+    .compose-meta{ display:flex; justify-content:space-between; font-size:12px; color:rgba(255,255,255,.6) }
+    .compose-error{ color:#ff6b6b; font-size:14px }
+    .btn-primary{
+        padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.1);
+        background:var(--primary,#4f46e5); color:#fff; cursor:pointer; font-weight:600; min-width:110px;
+    }
+    .btn-primary[disabled]{ opacity:.6; cursor:not-allowed }
+    .muted{ color:rgba(255,255,255,.6) }
+</style>
+
 @code{
     [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
-    protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+    protected ClaimsPrincipal UserClaims = new();
     int? CurrentUserId => UserClaims.UserId();
-    
+
     [Parameter] public int Id { get; set; }
     Entities.Topic TopicToView { get; set; } = new();
-    
+
     private bool _followed = true;
     private bool _locked = false;
 
     private string? _q;
+
     private string _sort = "new";
+    string Sort
+    {
+        get => _sort;
+        set
+        {
+            if (_sort == value) return;
+            _sort = value;
+            InvokeAsync(HandleSort);
+        }
+    }
+
+    string? _search = null;
+    string? Search
+    {
+        get => _search;
+        set
+        {
+            _search = value;
+            InvokeAsync(HandleSearch);
+        }
+    }
+
     private bool _loading = true;
     private bool _loadingMore;
     private bool _hasMore = true;
     private int _page = 0;
-
+    
     private List<PostList.PostListItem> _items = [];
+
+    string _newTitle = string.Empty;
+    string _newBody = string.Empty;
+    bool _submitting;
+    string _postError = string.Empty;
+    const int _titleMax = 180;
+    bool _canSubmit =>
+        !_submitting &&
+        !_locked &&
+        UserClaims.IsAuthenticated() &&
+        !string.IsNullOrWhiteSpace(_newTitle);
 
     protected override async Task OnParametersSetAsync()
     {
         TopicToView = await _topicService.GetByIdAsync(Id);
+        _locked = TopicToView.IsLocked;
+
+        if (authState is not null)
+        {
+            var state = await authState;
+            UserClaims = state.User ?? new();
+        }
     }
 
     protected override async Task OnInitializedAsync()
@@ -67,25 +180,15 @@
         await LoadMore();
     }
 
-    private Task DoSearch(string? q)
-    {
-        _loading = true;
-        StateHasChanged();
-        _items = _items
-            .Where(p => string.IsNullOrWhiteSpace(q) || p.Title.Contains(q!, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        _loading = false;
-        return Task.CompletedTask;
-    }
-
     private async Task LoadMore()
     {
+        _loading = true;
         _loadingMore = true;
         StateHasChanged();
-        
+
         var newItems = await _postService.QueryByTopicAsync(
             topicId: Id,
-            titleQuery: null,
+            titleQuery: _search,
             sort: _sort,
             page: ++_page,
             userId: CurrentUserId,
@@ -106,7 +209,8 @@
                 TopicLocked: item.Topic.IsLocked,
                 VoteDisabled: item.IsDeleted || item.Topic.IsLocked));
         }
-        
+
+        _loading = false;
         _hasMore = true;
         _loadingMore = false;
     }
@@ -130,8 +234,6 @@
 
         try
         {
-            // Server vraća zbir glasova nakon izmene
-            // (pretpostavka: ContentType.Post jer smo na /topic listi postova)
             var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Post, ev.postId, UserClaims.UserId().Value, next);
 
             _items[idx] = _items[idx] with
@@ -142,7 +244,6 @@
         }
         catch
         {
-            // Greška -> vrati stari prikaz
             _items[idx] = it;
         }
         finally
@@ -151,6 +252,93 @@
         }
     }
 
+    private async Task HandleSort()
+    {
+        _items.Clear();
+        _page = 0;
+        await LoadMore();
+    }
+
+    async Task HandleSearch()
+    {
+        _items.Clear();
+        _page = 0;
+        await LoadMore();
+    }
 
     private Task HandleReport(int postId) => Task.CompletedTask;
+
+    async Task SubmitNewPost()
+    {
+        _postError = string.Empty;
+
+        if (!UserClaims.IsAuthenticated())
+        {
+            _postError = "Morate biti ulogovani da biste objavili post.";
+            StateHasChanged(); return;
+        }
+        if (_locked)
+        {
+            _postError = "Tema je zaključana.";
+            StateHasChanged(); return;
+        }
+
+        var title = _newTitle?.Trim() ?? string.Empty;
+        if (title.Length == 0)
+        {
+            _postError = "Naslov je obavezan.";
+            StateHasChanged(); return;
+        }
+        if (title.Length > _titleMax)
+        {
+            _postError = $"Naslov je predugačak (maks {_titleMax} karaktera).";
+            StateHasChanged(); return;
+        }
+
+        _submitting = true;
+        StateHasChanged();
+
+        try
+        {
+            var created = await _postService.CreateAsync(
+                topicId: Id,
+                authorId: CurrentUserId!.Value,
+                title: title,
+                body: _newBody);
+
+            _items.Insert(0, new PostList.PostListItem(
+                Id: created.Id,
+                Title: created.Title,
+                TopicId: created.TopicId,
+                TopicTitle: TopicToView.Title,
+                AuthorName: UserClaims.Username() ?? "you",
+                CreatedAt: created.CreatedAt,
+                Score: 0,
+                MyVote: null,
+                CommentsCount: 0,
+                TopicLocked: _locked,
+                VoteDisabled: false
+            ));
+
+            _newTitle = string.Empty;
+            _newBody = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _postError = "Objava nije uspela. " + ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+            StateHasChanged();
+        }
+    }
+
+    void HandleComposeKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if ((e.CtrlKey || e.MetaKey) && e.Key == "Enter" && !_submitting && !_locked && UserClaims.IsAuthenticated())
+        {
+            _ = SubmitNewPost();
+        }
+    }
 }

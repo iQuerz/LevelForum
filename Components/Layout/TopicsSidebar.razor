@@ -1,4 +1,4 @@
-@* TopicsSidebar.razor — self-contained sidebar (desktop) / drawer (mobile) *@
+@* TopicsSidebar.razor — self-contained sidebar (desktop) / drawer (mobile) + NEW TOPIC MODAL *@
 @using System.Linq
 @using System.Security.Claims
 @using LevelForum.Data.Entities
@@ -100,11 +100,62 @@
       </div>
 
       <div class="tsb-footer">
-        <a href="/new-topic" class="link" @onclick="MaybeCloseOnMobile">+ New Topic</a>
+        <!-- PRE: link /new-topic ; SADA: otvara modal -->
+        <button class="link as-btn" @onclick="OpenCreateModal">+ New Topic</button>
       </div>
     </div>
   </div>
 </nav>
+
+@* =========================
+   NOVO: FULLSCREEN CREATE TOPIC MODAL
+   ========================= *@
+@if (_showCreate)
+{
+  <div class="modal-root" @onkeydown="HandleModalKey">
+    <div class="modal-backdrop" @onclick="CloseCreateModal"></div>
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-label="Create a new topic">
+      <div class="modal-header">
+        <div class="mh-title">Create Topic</div>
+        <button class="icon-btn" title="Close" @onclick="CloseCreateModal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        @if (!string.IsNullOrEmpty(_createError))
+        {
+          <div class="alert error">@_createError</div>
+        }
+
+        <div class="form-row">
+          <label class="lbl">Title<span class="req">*</span></label>
+          <input class="input"
+                 placeholder="e.g. C# Tips, EF Core, Frontend Design"
+                 @bind="_newTitle" @bind:event="oninput"
+                 maxlength="@TitleMax" />
+          <div class="help">
+            <span>@(_newTitle?.Length ?? 0)/@TitleMax</span>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label class="lbl">Description <span class="muted">(optional)</span></label>
+          <textarea class="textarea"
+                    placeholder="Short description of the topic…"
+                    @bind="_newDesc" @bind:event="oninput"></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn" @onclick="CloseCreateModal" disabled="@_saving">Cancel</button>
+        <button class="btn-primary"
+                @onclick="CreateTopicAsync"
+                disabled="@(!_canCreate || _saving)">
+          @(_saving ? "Creating…" : "Create")
+        </button>
+      </div>
+    </div>
+  </div>
+}
 
 <style>
   /* ====== DESKTOP (default) ====== */
@@ -141,33 +192,31 @@
   .pill:hover:not(:disabled){ background:rgba(255,255,255,.06) }
 
   .tsb-footer{ margin-top:auto; padding:8px }
-  .link{ color:var(--text); opacity:.9 }
+  .link{ color:var(--text); opacity:.9; text-decoration:none }
+  .link.as-btn{ background:transparent; border:none; padding:0; cursor:pointer; font:inherit; color:var(--text); }
 
   .tsb-skel, .tsb-empty, .tsb-alert{
     margin:6px 8px; font-size:12px; color:var(--muted,#9aa3b2);
   }
   .tsb-alert{ color:#ffd1d1 }
-
-  /* Uređaji bez hover-a (telefoni/tableti) — labele i akcije uvek vidljive */
   @@media (hover: none) {
     .tsb-label { opacity:1; }
     .tsb-action{ opacity:1; }
   }
 
-  /* ====== MOBILE ====== */
   @@media (max-width: 960px) {
-    .tsb { position: static; z-index:60; } /* wrapper je neutralan */
+    .tsb { position: static; z-index:60; }
 
     .tsb-panel {
       position: fixed;
-      inset: 0 auto 0 0;   /* levo poravnat drawer */
+      inset: 0 auto 0 0;
       width: min(90vw, 360px);
       height: 100vh;
       transform: translateX(-100%);
       transition: transform .2s ease;
       box-shadow: 0 20px 60px rgba(0,0,0,.5);
       border-right: 1px solid rgba(255,255,255,.06);
-      z-index: 61; /* iznad overlay-a */
+      z-index: 61;
     }
     .tsb.is-open .tsb-panel { transform: translateX(0); }
 
@@ -186,18 +235,69 @@
 
     .tsb-inner {
       padding:8px;
-      height: calc(100vh - 52px); /* ispod header-a */
+      height: calc(100vh - 52px);
       overflow:auto;
     }
 
-    /* Mobile: uvek vidljive etikete i akcije */
     .tsb-label { opacity:1; }
     .tsb-action{ opacity:1; }
   }
+
+  .modal-root{
+    position:fixed; inset:0; z-index:1000;
+  }
+  .modal-backdrop{
+    position:absolute; inset:0;
+    background:rgba(0,0,0,.55);
+    z-index:0;
+    pointer-events:auto;
+  }
+  .modal-sheet{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column;
+    background:var(--surface,#151923);
+    border:1px solid rgba(255,255,255,.08);
+    z-index:1;
+    pointer-events:auto;
+  }
+  .modal-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px; border-bottom:1px solid rgba(255,255,255,.08);
+  }
+  .mh-title{ font-weight:700; }
+  .modal-body{
+    padding:16px; display:flex; flex-direction:column; gap:12px; overflow:auto; flex:1;
+    max-width:760px; width:100%; margin:0 auto;
+  }
+  .modal-footer{
+    padding:12px; display:flex; gap:8px; justify-content:flex-end; border-top:1px solid rgba(255,255,255,.08);
+  }
+  .form-row{ display:flex; flex-direction:column; gap:6px; }
+  .lbl{ font-size:12px; color:rgba(255,255,255,.7) }
+  .req{ color:#ffb4b4; margin-left:4px }
+  .input, .textarea{
+    background:var(--surface-1,#161b28); color:var(--text);
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:10px; padding:10px 12px;
+  }
+  .textarea{ min-height:120px; resize:vertical; }
+  .help{ display:flex; justify-content:flex-end; font-size:12px; color:rgba(255,255,255,.6) }
+  .alert.error{
+    background:rgba(239,68,68,.15); border:1px solid rgba(239,68,68,.35);
+    border-radius:10px; padding:8px 10px; color:#ffd1d1;
+  }
+  .btn{
+    padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+    background:transparent; color:var(--text); cursor:pointer;
+  }
+  .btn-primary{
+    padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.1);
+    background:var(--primary,#4f46e5); color:#fff; cursor:pointer; font-weight:600; min-width:110px;
+  }
+  .btn[disabled], .btn-primary[disabled]{ opacity:.6; cursor:not-allowed }
 </style>
 
 @code {
-  /* Public param: možeš da startuješ otvoreno ako hoćeš */
   [Parameter] public bool StartOpen { get; set; } = false;
 
   private int? _userId;
@@ -208,7 +308,19 @@
   private int? _activeTopicId;
   private List<TopicItem> _followed = new();
   private List<TopicItem> _all = new();
-  private HashSet<int> _busy = new(); // topicId na kojima je akcija u toku
+  private HashSet<int> _busy = new();
+
+  private bool _showCreate;
+  private string _newTitle = string.Empty;
+  private string _newDesc  = string.Empty;
+  private string _createError = string.Empty;
+  private bool _saving;
+  private const int TitleMax = 80;
+
+  private bool _canCreate =>
+    !_saving &&
+    !string.IsNullOrWhiteSpace(_newTitle) &&
+    _newTitle.Trim().Length >= 3;
 
   protected override async Task OnInitializedAsync()
   {
@@ -243,8 +355,7 @@
     {
       var baseUri = new Uri(uri);
       var segments = baseUri.AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
-      // očekujemo /topic/{id} ili /t/{id}
-      if (segments.Length >= 2 && (segments[0].Equals("topic", StringComparison.OrdinalIgnoreCase) || segments[0].Equals("t", StringComparison.OrdinalIgnoreCase)))
+      if (segments.Length >= 2 && segments[0].Equals("topic", StringComparison.OrdinalIgnoreCase))
       {
         _activeTopicId = int.TryParse(segments[1], out var tid) ? tid : (int?)null;
       }
@@ -284,7 +395,6 @@
       }
       else
       {
-        // Gost
         var top = await _topicService.GetForSidebarAsync(null);
         _followed = new();
         _all = top.Select(t => new TopicItem(t.Id, t.Title, IsFollowed: false, IsLocked: t.IsLocked)).ToList();
@@ -312,8 +422,7 @@
 
   private Task NavigateToTopic(int id)
   {
-    // Idi na topic i zatvori drawer na mobile
-    Nav.NavigateTo($"/topic/{id}");
+    Nav.NavigateTo($"/topic/{id}", forceLoad: true);
     if (_open) CloseDrawer();
     return Task.CompletedTask;
   }
@@ -322,8 +431,6 @@
   {
     if (_userId is not int uid)
     {
-      // Ako nije logovan, vodi na login
-      var returnUrl = Uri.EscapeDataString(Nav.Uri);
       Nav.Login();
       return;
     }
@@ -350,7 +457,6 @@
   {
     if (_userId is not int uid)
     {
-      var returnUrl = Uri.EscapeDataString(Nav.Uri);
       Nav.Login();
       return;
     }
@@ -373,6 +479,72 @@
     }
   }
 
-  /* View model */
   private record TopicItem(int Id, string Title, bool IsFollowed = false, bool IsLocked = false);
+  private void OpenCreateModal()
+  {
+    if (_userId is not int)
+    {
+      Nav.Login();
+      return;
+    }
+    _createError = string.Empty;
+    _newTitle = string.Empty;
+    _newDesc = string.Empty;
+    _showCreate = true;
+  }
+
+  private void CloseCreateModal()
+  {
+    if (_saving) return; // ne zatvaraj dok traje slanje
+    _showCreate = false;
+  }
+
+  private async Task CreateTopicAsync()
+  {
+    _createError = string.Empty;
+
+    if (_userId is not int uid)
+    {
+      Nav.Login();
+      return;
+    }
+
+    var title = _newTitle?.Trim() ?? string.Empty;
+    if (title.Length < 3)
+    {
+      _createError = "Title must be at least 3 characters.";
+      return;
+    }
+
+    _saving = true;
+    try
+    {
+      var topic = await _topicService.CreateAsync(title, _newDesc?.Trim(), uid);
+      _showCreate = false;
+
+      await RefreshAsync();
+      await NavigateToTopic(topic.Id);
+    }
+    catch (Exception ex)
+    {
+      _createError = ex.Message;
+    }
+    finally
+    {
+      _saving = false;
+      StateHasChanged();
+    }
+  }
+
+  private void HandleModalKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+  {
+    if (e.Key == "Escape")
+    {
+      CloseCreateModal();
+    }
+    else if ((e.CtrlKey || e.MetaKey) && e.Key == "Enter" && _canCreate)
+    {
+      _ = CreateTopicAsync();
+    }
+  }
 }

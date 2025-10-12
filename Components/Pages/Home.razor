@@ -8,11 +8,8 @@
 @inject PostService _postService
 
 <PageContainer Title="Home">
-    <ListToolbar SearchValue="@_q"
-                 SearchValueChanged="v => _q = v"
-                 OnSearch="DoSearch"
-                 SortValue="@_sort"
-                 SortValueChanged="v => _sort = v" />
+    <ListToolbar @bind-SearchValue="@Search"
+                 @bind-SortValue="@Sort"/>
 
     <PostList Items="@_items"
               IsLoading="@_loading"
@@ -26,13 +23,36 @@
     [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
     protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
     private int? CurrentUserId => UserClaims.UserId();
-    private string? _q;
-    private string _sort = "new";
+    
     private bool _loading = true;
     private bool _loadingMore;
     private bool _hasMore = true;
+    
     private int _page = 0;
     private const int PageSize = 20;
+    
+    private string _sort = "new";
+    string Sort
+    {
+        get => _sort;
+        set
+        {
+            if (_sort == value) return;
+            _sort = value;
+            InvokeAsync(HandleSort);
+        }
+    }
+
+    string? _search = null; 
+    string? Search
+    {
+        get => _search;
+        set
+        {
+            _search = value;
+            InvokeAsync(HandleSearch);
+        }
+    }
 
     private List<PostList.PostListItem> _items = new();
 
@@ -56,11 +76,12 @@
     private async Task LoadMore()
     {
         _loadingMore = true;
+        _loading = true;
         StateHasChanged();
 
         var page = ++_page;
         var res = await _postService.QueryAsync(
-            titleQuery: _q,
+            titleQuery: _search,
             sort: _sort,
             page: page,
             userId: CurrentUserId,
@@ -76,7 +97,7 @@
                 AuthorName: item.Author.Username,
                 CreatedAt: item.CreatedAt,
                 Score: item.Score,
-                MyVote: null,
+                MyVote: item.MyVote,
                 CommentsCount: 0,
                 TopicLocked: item.Topic.IsLocked,
                 VoteDisabled: item.IsDeleted || item.Topic.IsLocked));
@@ -84,11 +105,27 @@
 
         _hasMore = _items.Count < res.Total;
         _loadingMore = false;
+        _loading = false;
+        StateHasChanged();
     }
 
     private Task HandleReport(int postId)
     {
         // TODO: wire to report flow
         return Task.CompletedTask;
+    }
+
+    private async Task HandleSort()
+    {
+        _items.Clear();
+        _page = 0;
+        await LoadMore();
+    }
+
+    async Task HandleSearch()
+    {
+        _items.Clear();
+        _page = 0;
+        await LoadMore();
     }
 }

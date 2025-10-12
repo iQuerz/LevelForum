@@ -8,6 +8,9 @@ public sealed class VoteService
     private readonly IDbContextFactory<ApplicationDbContext> _factory;
     private readonly SafeExecutor _safe;
 
+    // Koliko EXP autor dobija po jednom upvote-u
+    private const int ExpPerUpvote = 100;
+
     public VoteService(IDbContextFactory<ApplicationDbContext> factory, SafeExecutor safe)
     {
         _factory = factory;
@@ -22,15 +25,34 @@ public sealed class VoteService
             if (newVote is not (-1 or 0 or 1))
                 throw new ArgumentOutOfRangeException(nameof(newVote), "Vote must be -1, 0 or +1.");
 
-            var targetExists = targetType switch
+            // U isto vreme pribavi i autora targeta (da bismo mu dodelili EXP)
+            int? authorId = targetType switch
             {
-                ContentType.Post => await db.Posts.AnyAsync(p => p.Id == targetId && !p.IsDeleted, ct),
-                ContentType.Comment => await db.Comments.AnyAsync(c => c.Id == targetId && !c.IsDeleted, ct),
-                _ => false
-            };
-            if (!targetExists) throw new KeyNotFoundException("Target not found.");
+                ContentType.Post    => await db.Posts
+                    .Where(p => p.Id == targetId && !p.IsDeleted)
+                    .Select(p => (int?)p.AuthorId)
+                    .FirstOrDefaultAsync(ct),
 
-            var vote = await db.Votes.FirstOrDefaultAsync(v => v.TargetType == targetType && v.TargetId == targetId && v.UserId == userId, ct);
+                ContentType.Comment => await db.Comments
+                    .Where(c => c.Id == targetId && !c.IsDeleted)
+                    .Select(c => (int?)c.AuthorId)
+                    .FirstOrDefaultAsync(ct),
+
+                _ => null
+            };
+
+            if (authorId is null)
+                throw new KeyNotFoundException("Target not found.");
+
+            // Postojeći glas korisnika (ako postoji)
+            var vote = await db.Votes
+                .FirstOrDefaultAsync(v => v.TargetType == targetType && v.TargetId == targetId && v.UserId == userId, ct);
+
+            var oldVote = vote?.Value ?? 0;
+            var oldUp = oldVote == 1 ? 1 : 0;
+            var newUp = newVote == 1 ? 1 : 0;
+            var upDelta = newUp - oldUp; // -1, 0 ili +1
+
             if (vote is null)
             {
                 if (newVote != 0)
@@ -57,11 +79,23 @@ public sealed class VoteService
                 }
             }
 
+            // EXP: dodeli/oduzmi samo ako se menja "upvote status"
+            // i ako korisnik ne glasa na sopstveni sadržaj.
+            if (upDelta != 0 && authorId.Value != userId)
+            {
+                var author = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == authorId.Value, ct);
+                if (author is not null)
+                {
+                    author.Experience = Math.Max(0, author.Experience + upDelta * ExpPerUpvote);
+                }
+            }
+
             await db.SaveChangesAsync(ct);
             var sum = await db.Votes
                 .Where(v => v.TargetType == targetType && v.TargetId == targetId)
                 .Select(v => (int?)v.Value)
                 .SumAsync(ct);
+
             return sum ?? 0;
         }, "VoteService.ToggleVoteAsync", new { targetType, targetId, userId, newVote }, ct);
 

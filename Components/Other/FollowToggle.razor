@@ -1,4 +1,8 @@
+@using System.Security.Claims
+@using LevelForum.Data.Services
+@using LevelForum.Infrastructure
 @using Microsoft.AspNetCore.Components
+@inject TopicFollowService _followService
 
 <button type="button"
         class="follow-chip @(LocalFollow ? "is-on" : null)"
@@ -10,7 +14,12 @@
 @code{
     [Parameter] public bool IsFollowed { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public int TopicId { get; set; }
     [Parameter] public EventCallback<bool> OnChange { get; set; } // emits new value
+    
+    [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+    protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+    int? CurrentUserId => UserClaims.UserId();
 
     private bool LocalFollow;
     private bool _initialized;
@@ -26,9 +35,13 @@
 
     private async Task Toggle()
     {
-        if (Disabled) return;
+        if (Disabled || !UserClaims.IsAuthenticated()) return;
         LocalFollow = !LocalFollow;
         await OnChange.InvokeAsync(LocalFollow);
+        if (LocalFollow)
+            await _followService.FollowAsync(CurrentUserId.Value, TopicId);
+        else
+            await _followService.UnfollowAsync(CurrentUserId.Value, TopicId);
     }
 }
 

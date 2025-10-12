@@ -2,6 +2,7 @@ namespace LevelForum.Data.Services;
 
 using LevelForum.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel;
 
 public sealed class AppUserService
 {
@@ -72,19 +73,23 @@ public sealed class AppUserService
             return user;
         }, "AppUserService.UpdateAsync", new { id, email, avatarUrl }, ct);
 
-    public Task ChangeUsernameOnceAsync(int id, string newUsername, CancellationToken ct = default)
+    public Task ChangeUsernameAsync(int id, string newUsername, CancellationToken ct = default)
         => _safe.ExecuteAsync(async ct =>
         {
             await using var db = await _factory.CreateDbContextAsync(ct);
             var user = await db.AppUsers.FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted, ct)
                 ?? throw new KeyNotFoundException("User not found.");
 
+            // jednostavna validacija; dodatno možeš dodati regex po želji
+            if (string.IsNullOrWhiteSpace(newUsername) || newUsername.Length < 4)
+                throw new InvalidOperationException("Username must be at least 4 characters.");
+
             if (await db.AppUsers.AnyAsync(u => u.Username == newUsername && u.Id != id, ct))
                 throw new InvalidOperationException("Username already taken.");
 
-            user.Username = newUsername;
+            user.Username = newUsername.Trim();
             await db.SaveChangesAsync(ct);
-        }, "AppUserService.ChangeUsernameOnceAsync", new { id, newUsername }, ct);
+        }, "AppUserService.ChangeUsernameAsync", new { id, newUsername }, ct);
 
     public Task SetPasswordHashAsync(int id, string newPasswordHash, CancellationToken ct = default)
         => _safe.ExecuteAsync(async ct =>
@@ -94,7 +99,7 @@ public sealed class AppUserService
                 ?? throw new KeyNotFoundException("User not found.");
             user.PasswordHash = newPasswordHash;
             await db.SaveChangesAsync(ct);
-        }, "AppUserService.SetPasswordHashAsync", new { id }, ct);
+        }, "AppUserService.SetPasswordHashAsync", new { id, newPasswordHash }, ct);
 
     public Task AddExperienceAsync(int id, int delta, CancellationToken ct = default)
         => _safe.ExecuteAsync(async ct =>

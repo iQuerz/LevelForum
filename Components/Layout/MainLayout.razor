@@ -1,13 +1,10 @@
 ﻿@inherits LayoutComponentBase
-@using System.Collections.Generic
 
 <div class="app-shell">
     <!-- TOPBAR -->
     <header class="app-topbar-wrap">
         <AppTopbar Title="@Title"
-                 UnreadCount="@UnreadCount"
-                 OnSearch="HandleSearch"
-                 OnToggleSidebar="ToggleSidebar" />
+                 UnreadCount="@UnreadCount"/>
     </header>
 
     <!-- LAYOUT GRID -->
@@ -44,12 +41,8 @@
     [Parameter] public string Title { get; set; } = "LevelTMI";
     [Parameter] public int UnreadCount { get; set; } = 0;
 
-    [Parameter] public EventCallback<string?> OnSearch { get; set; }
-
     bool _sidebarOpen; // mobile drawer state
 
     void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
     void CloseSidebar() => _sidebarOpen = false;
-
-    Task HandleSearch(string? q) => OnSearch.InvokeAsync(q);
 }

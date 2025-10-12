@@ -1,0 +1,221 @@
+@page "/account"
+@using System.Security.Claims
+@using LevelForum.Components.Shared
+@using LevelForum.Infrastructure
+@using LevelForum.Data.Services
+@using Entities = LevelForum.Data.Entities
+@inject AppUserService _userService
+
+<PageContainer Title="My Account">
+    @if (!_loaded)
+    {
+        <div class="app-card" style="padding:12px;">Loading…</div>
+    }
+    else if (!_isAuth)
+    {
+        <div class="app-card info">
+            Please <a href="/Identity/Account/Login">log in</a> to see your account.
+        </div>
+    }
+    else if (_me is not null)
+    {
+        <div class="grid">
+            <!-- PROFILE CARD -->
+            <div class="app-card" style="padding:16px; display:flex; gap:12px; align-items:center;">
+                <div class="avatar">@(_me.Username?.Length>0 ? char.ToUpper(_me.Username![0]) : 'U')</div>
+                <div style="flex:1">
+                    <div class="title-row">
+                        <strong>@_me.Username</strong>
+                        <span class="chip">Lv. @_me.Level</span>
+                    </div>
+                    <div class="muted">@_me.Email</div>
+                    <div class="xp-wrap" title="XP progress to next level">
+                        <div class="xp-bar" style="width:@(Math.Round(_me.ProgressToNext*100))%"></div>
+                    </div>
+                    <div class="muted small">
+                        XP: @_me.Experience
+                        &nbsp;•&nbsp; Level XP: @_me.ExpForCurrentLevel → @_me.ExpForNextLevel
+                        &nbsp;(@(Math.Round(_me.ProgressToNext*100))%)
+                    </div>
+                </div>
+                <div class="created muted small">Joined @(_me.CreatedAt.ToString("yyyy-MM-dd"))</div>
+            </div>
+
+            <!-- USERNAME CHANGE -->
+            <div class="app-card" style="padding:16px; display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <strong>Change username</strong>
+                    @if (_successMsg is not null)
+                    {
+                        <span class="chip ok">@_successMsg</span>
+                    }
+                    @if (_errorMsg is not null)
+                    {
+                        <span class="chip warn">@_errorMsg</span>
+                    }
+                </div>
+
+                <div class="row">
+                    <label class="lbl">New username</label>
+                    <input class="input"
+                           placeholder="min 4 chars, letters/numbers/_"
+                           @bind="_newUsername"
+                           @bind:event="oninput"
+                           @onkeydown="OnKeyDown" />
+                </div>
+
+                @if (_validationMsg is not null)
+                {
+                    <div class="muted warn small">@_validationMsg</div>
+                }
+
+                <div style="display:flex; gap:8px;">
+                    <button class="btn-primary"
+                            disabled="@(!_canSubmit || _saving)"
+                            @onclick="SaveUsername">
+                        @(_saving ? "Saving…" : "Save")
+                    </button>
+                    <button class="btn" disabled="@(_saving || _me.Username == _newUsername)" @onclick="Reset">
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</PageContainer>
+
+<style>
+    .grid{ display:grid; gap:12px; grid-template-columns:1fr; max-width:820px; margin:0 auto; }
+    .app-card{
+        background:var(--surface-2,#1b2130); border:1px solid rgba(255,255,255,.08); border-radius:12px;
+    }
+    .app-card.info{ padding:12px; border-color:rgba(79,70,229,.35); background:rgba(79,70,229,.06) }
+    .avatar{ width:56px; height:56px; border-radius:50%; background:#2a3142; color:#fff; font-weight:700;
+        display:flex; align-items:center; justify-content:center; font-size:20px; }
+    .title-row{ display:flex; align-items:center; gap:8px; font-size:18px; }
+    .chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
+        font-size:12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); }
+    .chip.ok{ background:rgba(34,197,94,.15); border-color:rgba(34,197,94,.35) }
+    .chip.warn{ background:rgba(239,68,68,.15); border-color:rgba(239,68,68,.35) }
+    .muted{ color:rgba(255,255,255,.7) }
+    .muted.small{ font-size:12px }
+    .warn{ color:#ff8e8e }
+    .xp-wrap{ margin-top:8px; height:10px; background:rgba(255,255,255,.06); border-radius:999px; overflow:hidden; }
+    .xp-bar{ height:100%; background:var(--primary,#4f46e5); }
+    .created{ margin-left:auto }
+    .row{ display:flex; flex-direction:column; gap:6px; }
+    .lbl{ font-size:12px; color:rgba(255,255,255,.7) }
+    .input{
+        background:var(--surface-1,#161b28); color:var(--text); border:1px solid rgba(255,255,255,.12);
+        border-radius:10px; padding:10px 12px;
+    }
+    .btn-primary{
+        padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.1);
+        background:var(--primary,#4f46e5); color:#fff; cursor:pointer; font-weight:600; min-width:96px;
+    }
+    .btn{
+        padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+        background:transparent; color:var(--text); cursor:pointer;
+    }
+    .btn[disabled], .btn-primary[disabled]{ opacity:.6; cursor:not-allowed }
+</style>
+
+@code{
+    [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+    protected ClaimsPrincipal UserClaims = new();
+
+    Entities.AppUser? _me;
+    bool _loaded, _isAuth, _saving;
+    string? _errorMsg, _successMsg, _validationMsg;
+
+    string _newUsername = string.Empty;
+
+    bool _canSubmit =>
+        _me is not null &&
+        !_saving &&
+        _newUsername != _me.Username &&
+        Validate(_newUsername) == null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (authState is not null)
+        {
+            var st = await authState;
+            UserClaims = st.User ?? new();
+        }
+
+        _isAuth = UserClaims.IsAuthenticated();
+        if (!_isAuth)
+        {
+            _loaded = true;
+            return;
+        }
+
+        var uid = UserClaims.UserId();
+        if (uid is null)
+        {
+            _loaded = true;
+            _isAuth = false;
+            return;
+        }
+
+        _me = await _userService.GetByIdAsync(uid.Value);
+        _newUsername = _me?.Username ?? "";
+        _loaded = true;
+    }
+
+    string? Validate(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return "Username is required.";
+        if (username.Length < 4) return "Minimum 4 characters.";
+        // dozvoli slova, brojeve i donju crtu; prilagodi po želji
+        foreach (var c in username)
+        {
+            if (!(char.IsLetterOrDigit(c) || c == '_' || c == '.'))
+                return "Only letters, numbers, '_' and '.' are allowed.";
+        }
+        return null;
+    }
+
+    async Task SaveUsername()
+    {
+        _errorMsg = _successMsg = _validationMsg = null;
+
+        var err = Validate(_newUsername);
+        if (err is not null) { _validationMsg = err; return; }
+        if (_me is null) return;
+
+        _saving = true;
+        try
+        {
+            await _userService.ChangeUsernameAsync(_me.Id, _newUsername);
+            _me = await _userService.GetByIdAsync(_me.Id); // refresh iz baze
+            _newUsername = _me!.Username;
+            _successMsg = "Username updated.";
+        }
+        catch (Exception ex)
+        {
+            _errorMsg = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    void Reset()
+    {
+        if (_me is null) return;
+        _newUsername = _me.Username;
+        _errorMsg = _successMsg = _validationMsg = null;
+    }
+
+    void OnKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if ((e.CtrlKey || e.MetaKey) && e.Key == "Enter" && _canSubmit)
+        {
+            _ = SaveUsername();
+        }
+    }
+}
