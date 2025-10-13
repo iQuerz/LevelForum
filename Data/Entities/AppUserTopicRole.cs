@@ -14,4 +14,6 @@ public class AppUserTopicRole : _IdentifiableEntity
     
     public Topic Topic { get; set; }
     public int TopicId { get; set; }
+    
+    public bool HasAtLeast(AppRole minimum) => TopicRole >= minimum;
 }

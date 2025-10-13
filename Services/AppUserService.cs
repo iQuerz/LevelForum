@@ -120,4 +120,53 @@ public sealed class AppUserService
             user.IsDeleted = true;
             await db.SaveChangesAsync(ct);
         }, "AppUserService.SoftDeleteAsync", new { id }, ct);
+    
+    public Task<List<AppUserTopicRole>> GetTopicRolesAsync(int topicId, CancellationToken ct = default)
+        => _safe.ExecuteAsync<List<AppUserTopicRole>>(async ct =>
+        {
+            await using var db = await _factory.CreateDbContextAsync(ct);
+            var roles = await db.AppUserTopicRoles
+                .AsNoTracking()
+                .Include(r => r.AppUser)
+                .Include(r => r.Topic)
+                .Where(r => r.TopicId == topicId)
+                .ToListAsync(ct);
+            return roles;
+        }, "AppUserService.GetTopicRolesAsync", new { topicId }, ct);
+
+    public Task DefineTopicRolesAsync(int topicId, IEnumerable<AppUserTopicRole> roles, CancellationToken ct = default)
+        => _safe.ExecuteAsync(async ct =>
+        {
+            await using var db = await _factory.CreateDbContextAsync(ct);
+
+            var topic = await db.Topics.FirstOrDefaultAsync(t => t.Id == topicId && !t.IsDeleted, ct)
+                ?? throw new KeyNotFoundException("Topic not found.");
+
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+            var existing = await db.AppUserTopicRoles.Where(r => r.TopicId == topicId).ToListAsync(ct);
+            db.AppUserTopicRoles.RemoveRange(existing);
+
+            // de-dup po useru
+            var toAdd = roles
+                .Where(r => r.AppUserId > 0)
+                .GroupBy(r => r.AppUserId)
+                .Select(g => new AppUserTopicRole
+                {
+                    AppUserId = g.Key,
+                    TopicId = topicId,
+                    TopicRole = g.First().TopicRole
+                })
+                .ToList();
+
+            // opcionalno: validacija da korisnici postoje
+            var userIds = toAdd.Select(r => r.AppUserId).Distinct().ToList();
+            var existent = await db.AppUsers.Where(u => userIds.Contains(u.Id) && !u.IsDeleted).Select(u => u.Id).ToListAsync(ct);
+            if (existent.Count != userIds.Count)
+                throw new InvalidOperationException("Some users do not exist.");
+
+            await db.AppUserTopicRoles.AddRangeAsync(toAdd, ct);
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }, "AppUserService.DefineTopicRolesAsync", new { topicId }, ct);
 }

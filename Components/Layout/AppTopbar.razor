@@ -70,14 +70,8 @@
         @if(UserClaims.IsAuthenticated())
         {
             <span>@UserClaims.Username()</span>
-            <button class="icon-btn" title="Notifications">
-                🔔
-                @if (UnreadCount > 0)
-                {
-                    <span class="badge">@UnreadCount</span>
-                }
-            </button>
             <button class="icon-btn" title="Account" @onclick="@(() => Nav.NavigateTo("/account"))">👤</button>
+            <button class="icon-btn" title="Log out" @onclick="@(() => Nav.Logout())">➡️</button>
         }
         else
         {

@@ -137,4 +137,37 @@ public sealed class ReportService
 
             await db.SaveChangesAsync(ct);
         }, "ReportService.DeleteTargetAsync", new { reportId, reviewerId }, ct);
+    
+    public Task<(int PostId, int TopicId, string Snippet)?> GetTargetInfoAsync(int reportId, CancellationToken ct = default)
+        => _safe.ExecuteAsync<(int, int, string)?>(async ct =>
+        {
+            await using var db = await _factory.CreateDbContextAsync(ct);
+
+            var rep = await db.Reports.AsNoTracking().FirstOrDefaultAsync(r => r.Id == reportId, ct);
+            if (rep is null) return null;
+
+            if (rep.TargetType == ContentType.Post)
+            {
+                var p = await db.Posts
+                    .AsNoTracking()
+                    .Include(x => x.Topic)
+                    .FirstOrDefaultAsync(x => x.Id == rep.TargetId && !x.IsDeleted, ct);
+                if (p is null) return null;
+                var snip = string.IsNullOrWhiteSpace(p.Body) ? p.Title : p.Body;
+                snip = snip?.Length > 320 ? snip[..320] + "…" : snip ?? "";
+                return (p.Id, p.TopicId, snip);
+            }
+            else if (rep.TargetType == ContentType.Comment)
+            {
+                var c = await db.Comments
+                    .AsNoTracking()
+                    .Include(x => x.Post).ThenInclude(p => p.Topic)
+                    .FirstOrDefaultAsync(x => x.Id == rep.TargetId && !x.IsDeleted, ct);
+                if (c is null || c.Post is null) return null;
+                var snip = c.Body?.Length > 320 ? c.Body[..320] + "…" : c.Body ?? "";
+                return (c.PostId, c.Post.TopicId, snip);
+            }
+
+            return null;
+        }, "ReportService.GetTargetInfoAsync", new { reportId }, ct);
 }

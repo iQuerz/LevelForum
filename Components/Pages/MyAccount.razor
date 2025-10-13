@@ -1,10 +1,18 @@
 @page "/account"
+@using System
+@using System.Linq
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
 @using LevelForum.Components.Shared
 @using LevelForum.Infrastructure
 @using LevelForum.Data.Services
 @using Entities = LevelForum.Data.Entities
+
 @inject AppUserService _userService
+@inject ReportService _reportService
+@inject PostService _postService
+@inject TopicService _topicService
+@inject NavigationManager _nav
 
 <PageContainer Title="My Account">
     @if (!_loaded)
@@ -80,6 +88,108 @@
                     </button>
                 </div>
             </div>
+
+            <!-- NOTIFICATIONS (placeholder) -->
+            <div class="app-card" style="padding:16px; display:flex; justify-content:space-between; align-items:center;">
+                <strong>Notifications</strong>
+                <span class="muted">You have no notifications to read.</span>
+            </div>
+
+            <!-- REPORTS -->
+            @if (ShowReportsSection)
+            {
+                <div class="app-card" style="padding:12px; display:flex; flex-direction:column; gap:8px;">
+                    <div class="reports-head">
+                        <strong>Reports</strong>
+                        <div style="display:flex; gap:8px; align-items:center">
+                            <label class="muted small" style="display:flex; gap:6px; align-items:center;">
+                                <input type="checkbox" @bind="_onlyMine" />
+                                My reports
+                            </label>
+                            <select class="input small" @bind="_reportStatus" @bind:event="onchange" style="width:140px">
+                                <option>Open</option>
+                                <option>Closed</option>
+                                <option>All</option>
+                            </select>
+                            <input class="input small" placeholder="Search reason…" @bind="_reportSearch" @bind:event="oninput" style="width:200px" />
+                            <button class="btn refresh" @onclick="RefreshReports" disabled="@_reportsLoading">Refresh</button>
+                        </div>
+                    </div>
+
+                    @if (_reportsLoading)
+                    {
+                        <div class="muted">Loading reports…</div>
+                    }
+                    else if (_reports.Count == 0)
+                    {
+                        <div class="muted">No reports matching your scope.</div>
+                    }
+                    else
+                    {
+                        <div class="rep-list">
+                            @foreach (var r in _reports)
+                            {
+                                var disabled = r.IsMine;
+                                <div class="rep-row">
+                                    <div class="rep-main">
+                                        <span class="chip">@r.TargetType</span>
+                                        @if (!string.IsNullOrEmpty(r.TopicTitle))
+                                        {
+                                            <span class="chip subtle">Topic: @r.TopicTitle (@r.TopicId)</span>
+                                        }
+                                        <span class="muted small">#@r.Id • @r.CreatedAt.ToString("yyyy-MM-dd HH:mm")</span>
+                                        @if (r.IsMine)
+                                        {
+                                            <span class="chip warn">Filed by you</span>
+                                        }
+                                        <span style="margin-left:auto"></span>
+                                        <div class="row-actions">
+                                            <button class="btn small"
+                                                    disabled="@(disabled || r.Status == "Closed" || _acting.Contains(r.Id))"
+                                                    title="Close without action"
+                                                    @onclick="() => CloseReport(r)">
+                                                @( _acting.Contains(r.Id) ? "…" : "Close" )
+                                            </button>
+                                            <button class="btn small danger"
+                                                    disabled="@(disabled || r.Status == "Closed" || _acting.Contains(r.Id))"
+                                                    title="Delete target (post/comment) and close"
+                                                    @onclick="() => DeleteTargetAndClose(r)">
+                                                @( _acting.Contains(r.Id) ? "…" : "Delete & close" )
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="rep-reason">@r.Reason</div>
+
+                                    <div class="rep-preview">
+                                        <div class="preview-title">
+                                            <span class="muted small">Preview:</span>
+                                            <span style="flex:1"></span>
+                                            @if (r.PostId.HasValue && r.TopicId.HasValue)
+                                            {
+                                                
+                                                <a class="link" href="@($"/post/{r.PostId}")" target="_blank" rel="noopener">
+                                                    Open post →
+                                                </a>
+                                            }
+                                        </div>
+                                        <div class="preview-body">@r.Snippet</div>
+                                    </div>
+
+                                    <div class="rep-meta">
+                                        <span class="chip @(r.Status=="Closed"?"ok":"")">@r.Status</span>
+                                        @if (!string.IsNullOrEmpty(r.ReviewedBy))
+                                        {
+                                            <span class="muted small">Reviewed by @r.ReviewedBy at @r.ReviewedAt?.ToString("yyyy-MM-dd HH:mm")</span>
+                                        }
+                                        <span class="muted small">TargetId: @r.TargetId</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         </div>
     }
 </PageContainer>
@@ -96,7 +206,7 @@
     .chip{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px;
         font-size:12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); }
     .chip.ok{ background:rgba(34,197,94,.15); border-color:rgba(34,197,94,.35) }
-    .chip.warn{ background:rgba(239,68,68,.15); border-color:rgba(239,68,68,.35) }
+    .chip.subtle{ background:rgba(255,255,255,.04); }
     .muted{ color:rgba(255,255,255,.7) }
     .muted.small{ font-size:12px }
     .warn{ color:#ff8e8e }
@@ -109,6 +219,8 @@
         background:var(--surface-1,#161b28); color:var(--text); border:1px solid rgba(255,255,255,.12);
         border-radius:10px; padding:10px 12px;
     }
+    .input.small{ padding:8px 10px; border-radius:8px; }
+
     .btn-primary{
         padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.1);
         background:var(--primary,#4f46e5); color:#fff; cursor:pointer; font-weight:600; min-width:96px;
@@ -116,8 +228,27 @@
     .btn{
         padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
         background:transparent; color:var(--text); cursor:pointer;
+        transition: background .15s ease, border-color .15s ease;
     }
+    .btn:hover:not([disabled]){ background:rgba(255,255,255,.06); }
+    .btn.refresh:hover:not([disabled]){ background:rgba(79,70,229,.12); border-color:rgba(79,70,229,.35); }
     .btn[disabled], .btn-primary[disabled]{ opacity:.6; cursor:not-allowed }
+
+    .reports-head{ display:flex; align-items:center; justify-content:space-between; padding:4px 4px 8px; }
+    .rep-list{ display:flex; flex-direction:column; }
+    .rep-row{ display:flex; flex-direction:column; gap:6px; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,.06); background:rgba(255,255,255,.02) }
+    .rep-row + .rep-row{ margin-top:8px }
+    .rep-main{ display:flex; align-items:center; gap:8px; }
+    .rep-reason{ color:var(--text); }
+    .rep-meta{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .row-actions { display:flex; gap:6px; }
+    .btn.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
+    .btn.small.danger{ border-color:rgba(239,68,68,.4); color:#ff9b9b; }
+    .btn.small.danger:hover:not([disabled]){ background:rgba(239,68,68,.08); }
+    .rep-preview{ border:1px solid rgba(255,255,255,.06); border-radius:10px; padding:8px; background:rgba(255,255,255,.02) }
+    .preview-title{ display:flex; align-items:center; gap:8px; margin-bottom:6px }
+    .preview-body{ white-space:pre-wrap }
+    .link{ color:var(--text); opacity:.9; text-decoration:underline; }
 </style>
 
 @code{
@@ -127,7 +258,6 @@
     Entities.AppUser? _me;
     bool _loaded, _isAuth, _saving;
     string? _errorMsg, _successMsg, _validationMsg;
-
     string _newUsername = string.Empty;
 
     bool _canSubmit =>
@@ -145,22 +275,28 @@
         }
 
         _isAuth = UserClaims.IsAuthenticated();
-        if (!_isAuth)
-        {
-            _loaded = true;
-            return;
-        }
+        if (!_isAuth) { _loaded = true; return; }
 
         var uid = UserClaims.UserId();
-        if (uid is null)
-        {
-            _loaded = true;
-            _isAuth = false;
-            return;
-        }
+        if (uid is null) { _loaded = true; _isAuth = false; return; }
 
         _me = await _userService.GetByIdAsync(uid.Value);
         _newUsername = _me?.Username ?? "";
+
+        try
+        {
+            var followed = await _topicService.GetFollowingAsync(uid.Value);
+            foreach (var t in followed)
+            {
+                var roles = await _userService.GetTopicRolesAsync(t.Id);
+                if (roles.Any(r => r.AppUserId == uid.Value && r.HasAtLeast(Entities.AppRole.Moderator)))
+                    _moderatedTopicIds.Add(t.Id);
+            }
+        }
+        catch { }
+
+        if (ShowReportsSection) await RefreshReports();
+
         _loaded = true;
     }
 
@@ -168,12 +304,9 @@
     {
         if (string.IsNullOrWhiteSpace(username)) return "Username is required.";
         if (username.Length < 4) return "Minimum 4 characters.";
-        // dozvoli slova, brojeve i donju crtu; prilagodi po želji
         foreach (var c in username)
-        {
             if (!(char.IsLetterOrDigit(c) || c == '_' || c == '.'))
                 return "Only letters, numbers, '_' and '.' are allowed.";
-        }
         return null;
     }
 
@@ -189,19 +322,12 @@
         try
         {
             await _userService.ChangeUsernameAsync(_me.Id, _newUsername);
-            _me = await _userService.GetByIdAsync(_me.Id); // refresh iz baze
+            _me = await _userService.GetByIdAsync(_me.Id);
             _newUsername = _me!.Username;
             _successMsg = "Username updated.";
         }
-        catch (Exception ex)
-        {
-            _errorMsg = ex.Message;
-        }
-        finally
-        {
-            _saving = false;
-            StateHasChanged();
-        }
+        catch (Exception ex) { _errorMsg = ex.Message; }
+        finally { _saving = false; StateHasChanged(); }
     }
 
     void Reset()
@@ -214,8 +340,160 @@
     void OnKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         if ((e.CtrlKey || e.MetaKey) && e.Key == "Enter" && _canSubmit)
-        {
             _ = SaveUsername();
+    }
+
+    // Reports state
+    bool _reportsLoading;
+    string _reportStatus = "Open";
+    string _reportSearch = string.Empty;
+    bool _onlyMine = false;
+
+    HashSet<int> _moderatedTopicIds = new();
+    List<ReportRow> _reports = new();
+    HashSet<int> _acting = new();
+
+    bool _isGlobalModerator => UserClaims.HasAtLeastRole(Entities.AppRole.Moderator);
+    bool ShowReportsSection => _isGlobalModerator || _moderatedTopicIds.Count > 0;
+
+    sealed class ReportRow
+    {
+        public int Id { get; set; }
+        public string TargetType { get; set; } = "";
+        public int TargetId { get; set; }
+        public string Reason { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+        public string Status { get; set; } = "Open";
+        public DateTime? ReviewedAt { get; set; }
+        public string? ReviewedBy { get; set; }
+        public int? TopicId { get; set; }
+        public string? TopicTitle { get; set; }
+        public int? PostId { get; set; }
+        public string Snippet { get; set; } = "";
+        public bool IsMine { get; set; }
+    }
+
+    async Task RefreshReports()
+    {
+        if (!_isAuth || _me is null) return;
+        _reportsLoading = true;
+        _reports.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var page = await _reportService.QueryAsync(
+                status: _reportStatus,
+                search: string.IsNullOrWhiteSpace(_reportSearch) ? null : _reportSearch,
+                page: 1, pageSize: 100);
+
+            IEnumerable<Entities.Report> baseItems = page.Items;
+
+            if (_onlyMine)
+            {
+                baseItems = baseItems.Where(r => r.ReporterId == _me!.Id);
+            }
+            else
+            {
+                var myPage = await _reportService.QueryAsync(status: _reportStatus, search: null, page: 1, pageSize: 100);
+                var myReports = myPage.Items.Where(r => r.ReporterId == _me!.Id);
+                var dict = baseItems.ToDictionary(r => r.Id);
+                foreach (var mr in myReports) dict[mr.Id] = mr;
+                baseItems = dict.Values;
+            }
+
+            var scoped = baseItems;
+            if (!_isGlobalModerator)
+            {
+                var filtered = new List<Entities.Report>();
+                foreach (var r in baseItems)
+                {
+                    var ti = await _reportService.GetTargetInfoAsync(r.Id);
+                    if (ti is null) continue;
+                    var (_, topicId, _) = ti.Value;
+                    if (_moderatedTopicIds.Contains(topicId)) filtered.Add(r);
+                }
+                scoped = filtered;
+            }
+
+            var list = new List<ReportRow>();
+            foreach (var r in scoped.OrderByDescending(r => r.CreatedAt))
+            {
+                int? topicId = null;
+                int? postId  = null;
+                string snippet = "";
+                string? topicTitle = null;
+
+                var ti = await _reportService.GetTargetInfoAsync(r.Id);
+                if (ti is not null)
+                {
+                    postId = ti.Value.PostId;
+                    topicId = ti.Value.TopicId;
+                    snippet = ti.Value.Snippet;
+
+                    try
+                    {
+                        var post = await _postService.GetByIdAsync(postId.Value, userId: _me!.Id);
+                        topicTitle = post?.Topic?.Title;
+                    } catch { }
+                }
+
+                list.Add(new ReportRow
+                {
+                    Id = r.Id,
+                    TargetType = r.TargetType.ToString(),
+                    TargetId = r.TargetId,
+                    Reason = r.Reason,
+                    CreatedAt = r.CreatedAt,
+                    Status = r.Status.ToString(),
+                    ReviewedAt = r.ReviewedAt,
+                    ReviewedBy = r.ReviewedById.HasValue ? $"#{r.ReviewedById}" : null,
+                    TopicId = topicId,
+                    TopicTitle = topicTitle,
+                    PostId = postId,
+                    Snippet = snippet,
+                    IsMine = (r.ReporterId == _me!.Id)
+                });
+            }
+
+            _reports = list;
+        }
+        finally
+        {
+            _reportsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task CloseReport(ReportRow row)
+    {
+        if (row.IsMine || row.Status == "Closed" || _me is null) return;
+        _acting.Add(row.Id); StateHasChanged();
+
+        try
+        {
+            await _reportService.CloseAsync(row.Id, reviewerId: _me.Id, note: "Closed without action.");
+        }
+        finally
+        {
+            _acting.Remove(row.Id);
+            await RefreshReports(); // ensure filters and counts reflect the change
+        }
+    }
+
+    async Task DeleteTargetAndClose(ReportRow row)
+    {
+        if (row.IsMine || row.Status == "Closed" || _me is null) return;
+        _acting.Add(row.Id); StateHasChanged();
+
+        try
+        {
+            await _reportService.DeleteTargetAsync(row.Id, reviewerId: _me.Id);
+        }
+        finally
+        {
+            _acting.Remove(row.Id);
+            await RefreshReports(); // refresh to show closed state and updated preview
         }
     }
 }

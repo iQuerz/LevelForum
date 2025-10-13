@@ -1,6 +1,7 @@
 @page "/topic/{Id:int}"
 @using System.Security.Claims
 @using LevelForum.Components.Layout
+@using LevelForum.Components.Moderation
 @using LevelForum.Components.Posts
 @using LevelForum.Components.Other
 @using LevelForum.Components.Shared
@@ -11,20 +12,32 @@
 @inject PostService _postService
 @inject TopicService _topicService
 @inject VoteService _voteService
+@inject AppUserService _appUserService
+@inject NavigationManager _nav
 
 <PageContainer Title="@TopicToView.Title">
+    <p>@TopicToView.Description</p>
     <div class="app-card" style="padding:12px; display:flex; gap:8px; align-items:center;">
         <span class="chip">@TopicToView.Title</span>
-        <FollowToggle IsFollowed="@_followed" OnChange="v => _followed = v" TopicId="Id" />
+        <FollowToggle IsFollowed="@_followed" OnChange="v => _followed = v" TopicId="Id"/>
         <span style="flex:1"></span>
-        <LockToggle Locked="@_locked" OnToggle="v => _locked = v" TopicId="Id" />
+
+        @if (CanManageRoles)
+        {
+            <button class="icon-btn" title="Manage topic roles" @onclick="OpenRoles">🛠</button>
+        }
+
+        @if (CanLockTopic)
+        {
+            <LockToggle Locked="@_locked" OnToggle="v => _locked = v" TopicId="Id"/>
+        }
     </div>
 
     <div style="height:8px"></div>
 
     @if (_locked)
     {
-        <div class="compose-card warn">🔒 Tema je zaključana — dodavanje postova je onemogućeno.</div>
+        <div class="compose-card warn">🔒 Topic is locked - adding posts is disabled.</div>
     }
     else if (UserClaims.IsAuthenticated())
     {
@@ -35,11 +48,11 @@
                        @bind="_newTitle"
                        @bind:event="oninput"
                        maxlength="@_titleMax"
-                       @onkeydown="HandleComposeKeyDown" />
+                       @onkeydown="HandleComposeKeyDown"/>
                 <button class="btn-primary"
                         disabled="@(!_canSubmit)"
                         @onclick="SubmitNewPost">
-                    @(_submitting ? "Objavljujem…" : "Objavi")
+                    @(_submitting ? "Posting…" : "Post")
                 </button>
             </div>
             <textarea class="compose-body"
@@ -49,7 +62,7 @@
                       @onkeydown="HandleComposeKeyDown"></textarea>
             <div class="compose-meta">
                 <span class="muted">@(_newTitle?.Length ?? 0)/@_titleMax</span>
-                <span class="muted">Ctrl/⌘+Enter za objavu</span>
+                <span class="muted">Ctrl/⌘+Enter to post</span>
             </div>
             @if (!string.IsNullOrWhiteSpace(_postError))
             {
@@ -59,9 +72,9 @@
     }
     else
     {
-        <div class="compose-card info">
-            Molimo <a href="/Identity/Account/Login">ulogujte se</a> da biste dodali novi post.
-        </div>
+        <span class="compose-card info">
+            Please <a href="/Identity/Account/Login">log in</a> to post.
+        </span>
     }
 
     <div style="height:8px"></div>
@@ -75,11 +88,16 @@
               IsLoadingMore="@_loadingMore"
               OnLoadMore="LoadMore"
               OnVote="HandleVote"
-              OnReport="HandleReport" />
+              OnReport="HandleReport"/>
 </PageContainer>
 
+<AppUserTopicRoleModal
+    TopicId="@Id"
+    IsOpen="@_showRoles"
+    OnClose="CloseRoles"
+    OnSaved="OnRolesSaved" />
+
 <style>
-    /* NOVO: stilovi za composer */
     .compose-card{
         background:var(--surface-2,#1b2130);
         border:1px solid rgba(255,255,255,.08);
@@ -162,6 +180,21 @@
         !_locked &&
         UserClaims.IsAuthenticated() &&
         !string.IsNullOrWhiteSpace(_newTitle);
+    
+    private List<Entities.AppUserTopicRole> _topicRoles = new();
+
+    bool CanManageRoles =>
+        // global admin/owner
+        UserClaims.HasAtLeastRole(Entities.AppRole.Admin)
+        // or per-topic moderator/admin/owner
+        || (CurrentUserId is int uid
+            && _topicRoles.Any(r => r.AppUserId == uid && r.HasAtLeast(Entities.AppRole.Moderator)));
+
+    bool CanLockTopic =>
+        UserClaims.HasAtLeastRole(Entities.AppRole.Admin)
+        || (CurrentUserId is int uid)
+        && _topicRoles.Any(r => r.AppUserId == uid && r.HasAtLeast(Entities.AppRole.Admin));
+
 
     protected override async Task OnParametersSetAsync()
     {
@@ -173,11 +206,26 @@
             var state = await authState;
             UserClaims = state.User ?? new();
         }
+        await RefreshTopicRoles();
     }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadMore();
+    }
+    
+    private async Task RefreshTopicRoles()
+    {
+        try
+        {
+            var roles = await _appUserService.GetTopicRolesAsync(Id);
+            _topicRoles = roles ?? new();
+        }
+        catch
+        {
+            _topicRoles = new();
+        }
+        StateHasChanged();
     }
 
     private async Task LoadMore()
@@ -213,6 +261,7 @@
         _loading = false;
         _hasMore = true;
         _loadingMore = false;
+        StateHasChanged();
     }
 
     private async Task HandleVote((int postId, int value) ev)
@@ -334,11 +383,30 @@
         }
     }
 
-    void HandleComposeKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    void HandleComposeKeyDown(KeyboardEventArgs e)
     {
         if ((e.CtrlKey || e.MetaKey) && e.Key == "Enter" && !_submitting && !_locked && UserClaims.IsAuthenticated())
         {
             _ = SubmitNewPost();
         }
+    }
+    
+    
+    bool _showRoles;
+    void OpenRoles()
+    {
+        if (!UserClaims.IsAuthenticated()) { _nav.Login(); return; }
+        _showRoles = true;
+    }
+    Task CloseRoles()
+    {
+        _showRoles = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+    async Task OnRolesSaved()
+    {
+        await RefreshTopicRoles();
+        await CloseRoles();
     }
 }

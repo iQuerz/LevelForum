@@ -1,0 +1,234 @@
+@using LevelForum.Data.Entities
+@using LevelForum.Data.Services
+@inject AppUserService _appUserService
+
+@if (IsOpen)
+{
+  <div class="role-modal" @onkeydown="HandleKey">
+    <div class="role-backdrop" @onclick="Cancel"></div>
+    <div class="role-sheet" @onclick:stopPropagation="true" @onmousedown:stopPropagation="true" role="dialog" aria-modal="true" aria-label="Manage topic roles">
+      <div class="role-head">
+        <strong>Manage Topic Roles</strong>
+        <button class="icon-btn" title="Close" @onclick="Cancel">✕</button>
+      </div>
+
+      <div class="role-body">
+        @if (!string.IsNullOrEmpty(_error))
+        {
+          <div class="alert error">@_error</div>
+        }
+
+        @if (_loading)
+        {
+          <div class="muted">Loading…</div>
+        }
+        else
+        {
+          @if (_entries.Count == 0)
+          {
+            <div class="muted">No roles defined yet.</div>
+          }
+
+          @foreach (var e in _entries)
+          {
+            var isOwner = e.Role == AppRole.Owner.ToString();
+            <div class="row">
+              <input class="txt" value="@e.Username" disabled />
+              <select class="sel" @onchange="(ev)=>ChangeRole(e, ev.Value?.ToString())" value="@e.Role" disabled="@(isOwner ? "true" : "")">
+                @foreach (var r in _roleValues)
+                {
+                  <option value="@r">@r</option>
+                }
+              </select>
+              @if (!isOwner)
+              {
+                <button class="trash" title="Remove" @onclick="() => Remove(e)">🗑️</button>
+              }
+            </div>
+          }
+
+          <div class="divider"></div>
+
+          <div class="row">
+            <input class="txt"
+                   placeholder="username"
+                   @bind="_newUsername" @bind:event="oninput" />
+            <select class="sel" @bind="_newRole">
+              @foreach (var r in _roleValues)
+              {
+                <option value="@r">@r</option>
+              }
+            </select>
+            <button class="add" title="Add" @onclick="AddNew" disabled="@(!CanAddNew)">➕</button>
+          </div>
+        }
+      </div>
+
+      <div class="role-foot">
+        <button class="btn" @onclick="Cancel" disabled="@_saving">Cancel</button>
+        <button class="btn-primary" @onclick="Save" disabled="@(!_canSave || _saving)">
+          @(_saving ? "Saving…" : "Save")
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<style>
+  .role-modal{ position:fixed; inset:0; z-index:1000; }
+  .role-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.55); }
+  .role-sheet{
+    position:absolute; inset:0;
+    background:var(--surface,#151923);
+    border:1px solid rgba(255,255,255,.08);
+    display:flex; flex-direction:column;
+  }
+  .role-head{ display:flex; align-items:center; justify-content:space-between; padding:12px; border-bottom:1px solid rgba(255,255,255,.08) }
+  .role-body{ padding:12px; display:flex; flex-direction:column; gap:8px; overflow:auto; max-width:760px; width:100%; margin:0 auto; flex:1; }
+  .role-foot{ padding:12px; display:flex; gap:8px; justify-content:flex-end; border-top:1px solid rgba(255,255,255,.08) }
+  .row{ display:flex; gap:8px; align-items:center }
+  .txt{ flex:1; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:var(--surface-1,#161b28); color:var(--text); }
+  .sel{ width:160px; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:var(--surface-1,#161b28); color:var(--text) }
+  .trash, .add{
+    width:40px; height:40px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:transparent; color:var(--text); cursor:pointer;
+  }
+  .trash:hover, .add:hover{ background:rgba(255,255,255,.06) }
+  .divider{ height:1px; background:rgba(255,255,255,.08); margin:6px 0 }
+  .btn{ padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:transparent; color:var(--text); cursor:pointer }
+  .btn-primary{ padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.1); background:var(--primary,#4f46e5); color:#fff; font-weight:600; cursor:pointer; min-width:110px }
+  .btn[disabled], .btn-primary[disabled]{ opacity:.6; cursor:not-allowed }
+  .alert.error{ background:rgba(239,68,68,.15); border:1px solid rgba(239,68,68,.35); border-radius:10px; padding:8px 10px; color:#ffd1d1; }
+  .muted{ color:rgba(255,255,255,.7) }
+</style>
+
+@code {
+  [Parameter] public int TopicId { get; set; }
+  [Parameter] public bool IsOpen { get; set; }
+  [Parameter] public EventCallback OnClose { get; set; }
+  [Parameter] public EventCallback OnSaved { get; set; }
+
+  private bool _loading;
+  private bool _saving;
+  private string _error = string.Empty;
+
+  private readonly string[] _roleValues = Enum.GetNames(typeof(AppRole));
+  private List<Entry> _entries = new();
+
+  private string _newUsername = string.Empty;
+  private string _newRole = Enum.GetName(typeof(AppRole), AppRole.Moderator)!;
+
+  bool _canSave => !_loading && !_saving;
+  bool CanAddNew =>
+      !string.IsNullOrWhiteSpace(_newUsername)
+      && !_entries.Any(e => e.Username.Equals(_newUsername.Trim(), StringComparison.OrdinalIgnoreCase));
+
+  protected override async Task OnParametersSetAsync()
+  {
+    if (IsOpen)
+      await LoadAsync();
+  }
+
+  private async Task LoadAsync()
+  {
+    _loading = true; _error = string.Empty;
+    try
+    {
+      var roles = await _appUserService.GetTopicRolesAsync(TopicId);
+      _entries = roles.Select(r => new Entry
+      {
+        Username = r.AppUser?.Username ?? "",
+        AppUserId = r.AppUserId,
+        Role = r.TopicRole.ToString(),
+        IsExisting = true
+      }).OrderByDescending(e => e.Role).ThenBy(e => e.Username).ToList();
+    }
+    catch (Exception ex) { _error = ex.Message; }
+    finally { _loading = false; StateHasChanged(); }
+  }
+
+  private void ChangeRole(Entry e, string? value)
+  {
+    if (string.IsNullOrWhiteSpace(value)) return;
+    e.Role = value;
+  }
+
+  private void Remove(Entry e)
+  {
+    _entries.Remove(e);
+  }
+
+  private void AddNew()
+  {
+    var name = _newUsername?.Trim();
+    if (string.IsNullOrWhiteSpace(name)) return;
+    if (_entries.Any(e => e.Username.Equals(name, StringComparison.OrdinalIgnoreCase))) return;
+
+    _entries.Add(new Entry
+    {
+      Username = name,
+      AppUserId = 0, // resolve on save
+      Role = _newRole,
+      IsExisting = false
+    });
+
+    _newUsername = string.Empty;
+    _newRole = Enum.GetName(typeof(AppRole), AppRole.Moderator)!;
+    StateHasChanged();
+  }
+
+  private async Task Save()
+  {
+    if (_saving) return;
+    _saving = true; _error = string.Empty;
+    try
+    {
+      // Resolve usernames -> AppUserId for entries missing id
+      for (int i = 0; i < _entries.Count; i++)
+      {
+        var e = _entries[i];
+        if (e.AppUserId <= 0)
+        {
+          var user = await _appUserService.GetByUsernameAsync(e.Username);
+          if (user is null) throw new InvalidOperationException($"User '{e.Username}' not found.");
+          e.AppUserId = user.Id;
+        }
+      }
+
+      var toSend = _entries
+        .Select(e => new AppUserTopicRole
+        {
+          TopicId = TopicId,
+          AppUserId = e.AppUserId,
+          TopicRole = Enum.Parse<AppRole>(e.Role, ignoreCase: true)
+        })
+        .ToList();
+
+      await _appUserService.DefineTopicRolesAsync(TopicId, toSend);
+
+      if (OnSaved.HasDelegate) await OnSaved.InvokeAsync();
+      await Cancel();
+    }
+    catch (Exception ex) { _error = ex.Message; }
+    finally { _saving = false; StateHasChanged(); }
+  }
+
+  private async Task Cancel()
+  {
+    _error = string.Empty;
+    if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+  }
+
+  private void HandleKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+  {
+    if (e.Key == "Escape") _ = Cancel();
+    else if ((e.CtrlKey || e.MetaKey) && e.Key == "Enter" && _canSave) _ = Save();
+  }
+
+  private sealed class Entry
+  {
+    public string Username { get; set; } = "";
+    public int AppUserId { get; set; } // 0 => resolve
+    public string Role { get; set; } = nameof(AppRole.Moderator);
+    public bool IsExisting { get; set; }
+  }
+}

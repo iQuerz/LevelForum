@@ -80,8 +80,6 @@
 
   [Parameter] public string AuthorName { get; set; } = string.Empty;
   [Parameter] public DateTime CreatedAt { get; set; }
-
-  // početne vrednosti; komponenta dalje drži **sopstveno** stanje (_score/_myVote/_voteDisabled)
   [Parameter] public int Score { get; set; }
   [Parameter] public int? MyVote { get; set; }
 
@@ -105,7 +103,6 @@
 
   protected override void OnParametersSet()
   {
-    // sync initial props u lokalno stanje (idempotentno)
     _score = Score;
     _myVote = MyVote;
   }
@@ -129,7 +126,6 @@
     }
     catch
     {
-      // revert
       _myVote = old == 0 ? (int?)null : old;
       _score -= (next - old);
     }
