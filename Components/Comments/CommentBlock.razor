@@ -1,20 +1,27 @@
 @using Microsoft.AspNetCore.Components
+@using System.Security.Claims
+@using Entities = LevelForum.Data.Entities
+@using LevelForum.Data.Services
+@using LevelForum.Infrastructure
+@inject VoteService _voteService
 
 <div class="comment @(Depth>0 ? "comment-child" : null)">
   <div class="c-vote">
     <button type="button"
-            class="vote-btn @(MyVote==1?"up-active":null)"
+            class="vote-btn up"
             aria-label="Upvote comment"
-            aria-pressed="@(MyVote==1)"
-            @onclick="() => Vote(+1)">▲</button>
+            aria-pressed="@(_myVote == 1 ? "true" : "false")"
+            disabled="@IsVoteDisabled"
+            @onclick="() => HandleVote(+1)">▲</button>
 
-    <div class="c-score" aria-live="polite">@Score</div>
+    <div class="c-score @( _myVote == 1 ? "is-up" : _myVote == -1 ? "is-down" : null)" aria-live="polite">@_score</div>
 
     <button type="button"
-            class="vote-btn @(MyVote==-1?"down-active":null)"
+            class="vote-btn down"
             aria-label="Downvote comment"
-            aria-pressed="@(MyVote==-1)"
-            @onclick="() => Vote(-1)">▼</button>
+            aria-pressed="@(_myVote == -1 ? "true" : "false")"
+            disabled="@IsVoteDisabled"
+            @onclick="() => HandleVote(-1)">▼</button>
   </div>
 
   <div class="c-main">
@@ -114,6 +121,10 @@
 </div>
 
 @code{
+  [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+  protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+  int? CurrentUserId => UserClaims.UserId();
+
   [Parameter] public int Id { get; set; }
   [Parameter] public string AuthorName { get; set; } = string.Empty;
   [Parameter] public string Body { get; set; } = string.Empty;
@@ -139,7 +150,49 @@
   string? _editText;
   bool _menuOpen;
 
-  Task Vote(int v) => OnVote.InvokeAsync((Id, v));
+  int _score;
+  int? _myVote;
+  bool _voteDisabled;
+
+  bool IsVoteDisabled => _voteDisabled || !UserClaims.IsAuthenticated();
+
+  protected override void OnParametersSet()
+  {
+    _score = Score;
+    _myVote = MyVote;
+  }
+
+  async Task HandleVote(int v)
+  {
+    if (!UserClaims.IsAuthenticated()) return;
+
+    var old = _myVote ?? 0;
+    var next = (old == v) ? 0 : v;
+
+    _voteDisabled = true;
+    _myVote = next == 0 ? (int?)null : next;
+    _score += (next - old);
+    StateHasChanged();
+
+    try
+    {
+      var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Comment, Id, CurrentUserId!.Value, next);
+      _score = newScore;
+    }
+    catch
+    {
+      _myVote = old == 0 ? (int?)null : old;
+      _score -= (next - old);
+    }
+    finally
+    {
+      _voteDisabled = false;
+      StateHasChanged();
+    }
+
+    if (OnVote.HasDelegate)
+      await OnVote.InvokeAsync((Id, v));
+  }
 
   void ToggleReply() => _replying = !_replying;
 
@@ -216,8 +269,49 @@
   .link-btn{ background:transparent; border:none; color:var(--link); cursor:pointer; padding:0 }
   .link-btn:hover{ color:var(--link-hover); text-decoration:underline }
 
-
   /* Reply area and children */
   .c-reply{ margin-top:6px }
   .c-children{ margin-top:6px; display:flex; flex-direction:column; gap:0 }
+
+  /* --- IDENTIČAN voting UI kao na PostList/PostHeader --- */
+  .vote-btn{
+    border:1px solid var(--border-color);
+    background:transparent;
+    border-radius:8px;
+    width:34px; height:28px; cursor:pointer;
+    transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .05s ease;
+    outline: none; line-height:1;
+  }
+  .vote-btn:active{ transform: translateY(1px); }
+  .vote-btn:focus-visible{
+    box-shadow: 0 0 0 3px rgba(79,70,229,.35);
+    border-color: var(--primary-light);
+  }
+
+  .vote-btn.up:hover{
+    background: var(--success-lighter);
+    color: var(--on-success-lighter);
+    border-color: var(--success-light);
+  }
+  .vote-btn.down:hover{
+    background: var(--danger-lighter);
+    color: var(--on-danger-lighter);
+    border-color: var(--danger-light);
+  }
+
+  .vote-btn.up[aria-pressed="true"]{
+    color: var(--success);
+    border-color: var(--success-dark);
+  }
+  .vote-btn.down[aria-pressed="true"]{
+    color: var(--danger);
+    border-color: var(--danger-dark);
+  }
+  .vote-btn.up[aria-pressed="true"]:hover{ border-color: var(--success-darker); }
+  .vote-btn.down[aria-pressed="true"]:hover{ border-color: var(--danger-darker); }
+
+  .vote-btn[disabled]{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+
+  .c-score.is-up{ color: var(--success-dark); }
+  .c-score.is-down{ color: var(--danger-dark); }
 </style>

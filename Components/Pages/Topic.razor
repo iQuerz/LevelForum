@@ -9,6 +9,7 @@
 @using LevelForum.Infrastructure
 @using Entities = LevelForum.Data.Entities
 
+@inject TopicFollowService _followService
 @inject PostService _postService
 @inject TopicService _topicService
 @inject VoteService _voteService
@@ -129,7 +130,7 @@
 
 @code{
     [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
-    protected ClaimsPrincipal UserClaims = new();
+    protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
     int? CurrentUserId => UserClaims.UserId();
 
     [Parameter] public int Id { get; set; }
@@ -200,12 +201,10 @@
     {
         TopicToView = await _topicService.GetByIdAsync(Id);
         _locked = TopicToView.IsLocked;
-
-        if (authState is not null)
-        {
-            var state = await authState;
-            UserClaims = state.User ?? new();
-        }
+        _followed = UserClaims.IsAuthenticated()
+            ? await _followService.IsFollowingAsync(CurrentUserId.Value, TopicToView.Id)
+            : false;
+        
         await RefreshTopicRoles();
     }
 

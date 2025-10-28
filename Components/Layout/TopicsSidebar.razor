@@ -12,12 +12,9 @@
 @inject NavigationManager Nav
 
 <nav class="tsb @(_open ? "is-open" : null)" aria-label="Topics navigation">
-  <!-- OVERLAY: samo na mobile + kad je open -->
   <div class="tsb-overlay" @onclick="CloseDrawer" aria-hidden="@(!_open)"></div>
 
-  <!-- PANEL: isti markup za desktop i mobile -->
   <div class="tsb-panel" role="navigation" aria-label="Topics">
-    <!-- Header – vidljiv samo na mobile -->
     <div class="tsb-header on-mobile">
       <div class="title">Topics</div>
       <button class="icon-btn" aria-label="Close" @onclick="CloseDrawer">✕</button>
@@ -29,7 +26,7 @@
         <div class="tsb-alert">@_error</div>
       }
 
-      <div class="tsb-section">
+      <div class="tsb-section followed">
         <div class="tsb-section-title">Followed</div>
         @if (_followed is not null && _followed.Any())
         {
@@ -59,7 +56,7 @@
         }
       </div>
 
-      <div class="tsb-section">
+      <div class="tsb-section popular">
         <div class="tsb-section-title">Popular Topics</div>
         @if (_all?.Any() == true)
         {
@@ -100,7 +97,6 @@
       </div>
 
       <div class="tsb-footer">
-        <!-- PRE: link /new-topic ; SADA: otvara modal -->
         <button class="link as-btn" @onclick="OpenCreateModal">+ New Topic</button>
       </div>
     </div>
@@ -108,7 +104,7 @@
 </nav>
 
 @* =========================
-   NOVO: FULLSCREEN CREATE TOPIC MODAL
+   FULLSCREEN CREATE TOPIC MODAL
    ========================= *@
 @if (_showCreate)
 {
@@ -160,7 +156,7 @@
 <style>
   /* ====== DESKTOP (default) ====== */
   .tsb { position: sticky; top:56px; height:calc(100vh - 56px); z-index:10; }
-  .tsb-overlay { display:none; } /* desktop nema overlay */
+  .tsb-overlay { display:none; }
 
   .tsb-panel {
     width:72px; height:100%;
@@ -168,11 +164,12 @@
     background:var(--surface,#151923);
     transition:width .18s ease;
     box-sizing:border-box;
+    overflow:hidden;
   }
   .tsb:hover .tsb-panel { width:280px; }
 
-  .tsb-inner{ height:100%; display:flex; flex-direction:column; gap:8px; padding:8px }
-  .tsb-header.on-mobile{ display:none } /* vidljiv samo na mobile */
+  .tsb-inner{ height:100%; display:flex; flex-direction:column; gap:8px; padding:8px; min-height:0; }
+  .tsb-header.on-mobile{ display:none }
 
   .tsb-section{ display:flex; flex-direction:column; gap:4px; }
   .tsb-section-title{ color:var(--muted,#9aa3b2); font-size:12px; padding:8px 6px }
@@ -181,7 +178,7 @@
   .tsb-item:hover{ background:rgba(255,255,255,.06) }
   .tsb-bullet{ width:22px; text-align:center; opacity:.8 }
   .tsb-label{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; opacity:0; transition:opacity .18s }
-  .tsb:hover .tsb-label{ opacity:1 } /* desktop expanded */
+  .tsb:hover .tsb-label{ opacity:1 }
   .tsb-action{ opacity:0; transition:opacity .18s }
   .tsb:hover .tsb-action{ opacity:1 }
   .tsb-item.is-active{ outline:2px solid rgba(79,70,229,.45) }
@@ -199,6 +196,41 @@
     margin:6px 8px; font-size:12px; color:var(--muted,#9aa3b2);
   }
   .tsb-alert{ color:#ffd1d1 }
+
+  /* FOLLOWED: max 40%, bez skrola dok nije proširen */
+  .tsb-section.followed {
+    flex: 0 1 auto;
+    max-height: 40%;
+    min-height: 0;
+    overflow-y: hidden;
+    overflow-x: hidden;
+  }
+  .tsb:hover .tsb-section.followed {
+    overflow-y: auto;
+  }
+  .tsb-section.followed .tsb-section-title {
+    position: sticky; top: 0;
+    background: var(--surface,#151923);
+    z-index: 1;
+  }
+
+  /* POPULAR: max 50%, isto ponašanje kao followed */
+  .tsb-section.popular {
+    flex: 0 1 auto;
+    max-height: 50%;
+    min-height: 0;
+    overflow-y: hidden;
+    overflow-x: hidden;
+  }
+  .tsb:hover .tsb-section.popular {
+    overflow-y: auto;
+  }
+  .tsb-section.popular .tsb-section-title {
+    position: sticky; top: 0;
+    background: var(--surface,#151923);
+    z-index: 1;
+  }
+
   @@media (hover: none) {
     .tsb-label { opacity:1; }
     .tsb-action{ opacity:1; }
@@ -217,6 +249,7 @@
       box-shadow: 0 20px 60px rgba(0,0,0,.5);
       border-right: 1px solid rgba(255,255,255,.06);
       z-index: 61;
+      overflow:hidden;
     }
     .tsb.is-open .tsb-panel { transform: translateX(0); }
 
@@ -234,13 +267,24 @@
     }
 
     .tsb-inner {
-      padding:8px;
+      padding: 8px;
       height: calc(100vh - 52px);
-      overflow:auto;
+      overflow: hidden;
+      min-height: 0;
     }
+    
+    .tsb-section.followed,
+    .tsb-section.popular {
+      overflow: auto;
+    }
+    
+    .tsb-section.followed { max-height: 40%; }
+    .tsb-section.popular  { max-height: 50%; }
 
     .tsb-label { opacity:1; }
     .tsb-action{ opacity:1; }
+
+    .tsb-section.popular { overflow:auto; }
   }
 
   .modal-root{
@@ -326,12 +370,10 @@
   {
     _open = StartOpen;
 
-    // UserId iz claim-a
     var auth = await AuthStateProvider.GetAuthenticationStateAsync();
     var uidStr = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
     _userId = int.TryParse(uidStr, out var id) ? id : (int?)null;
 
-    // Aktivni topic iz URL-a
     SetActiveFromUri(Nav.Uri);
     Nav.LocationChanged += OnLocationChanged;
 
@@ -379,7 +421,6 @@
     {
       if (_userId is int uid)
       {
-        // 1) Praćene
         var followed = await _topicService.GetFollowingAsync(uid);
         var followedSet = new HashSet<int>(followed.Select(t => t.Id));
 
@@ -387,7 +428,6 @@
           .Select(t => new TopicItem(t.Id, t.Title, IsFollowed: true, IsLocked: t.IsLocked))
           .ToList();
 
-        // 2) All Topics = globalno popularne (ne filtriramo po useru)
         var popular = await _topicService.GetForSidebarAsync(null);
         _all = popular
           .Select(t => new TopicItem(t.Id, t.Title, IsFollowed: followedSet.Contains(t.Id), IsLocked: t.IsLocked))
@@ -495,7 +535,7 @@
 
   private void CloseCreateModal()
   {
-    if (_saving) return; // ne zatvaraj dok traje slanje
+    if (_saving) return;
     _showCreate = false;
   }
 
