@@ -1,25 +1,27 @@
 @using Microsoft.AspNetCore.Components
+@using System.Security.Claims
 @using Entities = LevelForum.Data.Entities
 @using LevelForum.Data.Services
+@using LevelForum.Infrastructure
 @inject VoteService _voteService
 
 <div class="post-header app-card">
   <div class="ph-wrap">
     <div class="ph-vote">
       <button type="button"
-              class="vote-btn @( _myVote==1 ? "up-active" : null)"
+              class="vote-btn up"
               aria-label="Upvote"
-              aria-pressed="@(_myVote==1)"
-              disabled="@_voteDisabled || CurrentUserId<=0"
+              aria-pressed="@(_myVote == 1 ? "true" : "false")"
+              disabled="@IsVoteDisabled"
               @onclick="() => HandleVote(+1)">▲</button>
 
-      <div class="ph-score" aria-live="polite">@_score</div>
+              <div class="ph-score @( _myVote == 1 ? "is-up" : _myVote == -1 ? "is-down" : null)" aria-live="polite">@_score</div>
 
       <button type="button"
-              class="vote-btn @( _myVote==-1 ? "down-active" : null)"
+              class="vote-btn down"
               aria-label="Downvote"
-              aria-pressed="@(_myVote==-1)"
-              disabled="@_voteDisabled || CurrentUserId<=0"
+              aria-pressed="@(_myVote == -1 ? "true" : "false")"
+              disabled="@IsVoteDisabled"
               @onclick="() => HandleVote(-1)">▼</button>
     </div>
 
@@ -71,6 +73,10 @@
 </div>
 
 @code{
+  [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+  protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+  int? CurrentUserId => UserClaims.UserId();
+
   [Parameter] public int Id { get; set; }
   [Parameter] public string Title { get; set; } = string.Empty;
 
@@ -86,20 +92,18 @@
   [Parameter] public bool CanEditPost { get; set; } = false;
   [Parameter] public bool CanDeletePost { get; set; } = false;
 
-  [Parameter] public int? CurrentUserId { get; set; } = 0;
-
   [Parameter] public EventCallback<int> OnReport { get; set; }
   [Parameter] public EventCallback<int> OnEditPost { get; set; }
   [Parameter] public EventCallback<int> OnDeletePost { get; set; }
 
   bool _menuOpen;
 
-  // lokalno stanje za Voting
   int _score;
   int? _myVote;
   bool _voteDisabled;
 
   bool ShowActionsMenu => CanEditPost || CanDeletePost;
+  bool IsVoteDisabled => _voteDisabled || TopicLocked || !UserClaims.IsAuthenticated();
 
   protected override void OnParametersSet()
   {
@@ -109,7 +113,7 @@
 
   async Task HandleVote(int v)
   {
-    if (CurrentUserId <= 0) return;
+    if (!UserClaims.IsAuthenticated()) return;
 
     var old = _myVote ?? 0;
     var next = (old == v) ? 0 : v;
@@ -121,12 +125,12 @@
 
     try
     {
-      var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Post, Id, CurrentUserId.Value, next);
+      var newScore = await _voteService.ToggleVoteAsync(Entities.ContentType.Post, Id, CurrentUserId!.Value, next);
       _score = newScore;
     }
     catch
     {
-      _myVote = old == 0 ? (int?)null : old;
+      _myVote = old == 0 ? null : old;
       _score -= (next - old);
     }
     finally
@@ -154,10 +158,6 @@
   .post-header{ padding:12px }
   .ph-wrap{ display:flex; gap:12px }
   .ph-vote{ width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; padding:2px 0 }
-  .vote-btn{ width:36px; height:28px; border-radius:8px; border:1px solid var(--border-color);
-    background:transparent; color:var(--muted); cursor:pointer; line-height:1 }
-  .vote-btn:hover{ background:rgba(255,255,255,.06) }
-  .up-active{ color:var(--primary) } .down-active{ color:var(--danger) }
   .ph-score{ min-width:28px; text-align:center; font-weight:600; color:var(--text) }
 
   .ph-body{ flex:1; display:flex; flex-direction:column; gap:6px }
@@ -175,4 +175,43 @@
   .ph-menu-item:hover{ background:rgba(255,255,255,.06) }
   .ph-menu-item.danger{ color:var(--on-danger); background:var(--danger); border-radius:8px }
   .ph-menu-item.danger:hover{ filter:brightness(0.95) }
+
+  .vote-btn{
+    border:1px solid var(--border-color);
+    background:transparent;
+    border-radius:8px;
+    width:34px; height:28px; cursor:pointer;
+    transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .05s ease;
+    outline: none; line-height:1;
+  }
+  .vote-btn:active{ transform: translateY(1px); }
+  .vote-btn:focus-visible{
+    box-shadow: 0 0 0 3px rgba(79,70,229,.35);
+    border-color: var(--primary-light);
+  }
+
+  .vote-btn.up:hover{
+    background: var(--success-lighter);
+    color: var(--on-success-lighter);
+    border-color: var(--success-light);
+  }
+  .vote-btn.down:hover{
+    background: var(--danger-lighter);
+    color: var(--on-danger-lighter);
+    border-color: var(--danger-light);
+  }
+
+  .vote-btn.up[aria-pressed="true"]{
+    color: var(--success);
+  }
+  .vote-btn.down[aria-pressed="true"]{
+    color: var(--danger);
+  }
+
+  .vote-btn.up[aria-pressed="true"]:hover{ border-color: var(--success-darker); }
+  .vote-btn.down[aria-pressed="true"]:hover{ border-color: var(--danger-darker); }
+
+  .vote-btn[disabled]{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+  .ph-score.is-up{ color: var(--success-dark); }
+  .ph-score.is-down{ color: var(--danger-dark); }
 </style>

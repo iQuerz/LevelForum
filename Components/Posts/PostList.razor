@@ -21,14 +21,14 @@
         <div class="vote-col">
           <button class="vote-btn up"
                   disabled="@IsVoteDisabled(p)"
-                  aria-pressed="@(p.MyVote == 1)"
+                  aria-pressed="@(p.MyVote == 1 ? "true" : "false")"
                   @onclick="() => HandleVote(p.Id, 1)">
             ▲
           </button>
-          <div class="score">@p.Score</div>
+          <div class="score @(p.MyVote == 1 ? "is-up" : p.MyVote == -1 ? "is-down" : null)">@p.Score</div>
           <button class="vote-btn down"
                   disabled="@IsVoteDisabled(p)"
-                  aria-pressed="@(p.MyVote == -1)"
+                  aria-pressed="@(p.MyVote == -1 ? "true" : "false")"
                   @onclick="() => HandleVote(p.Id, -1)">
             ▼
           </button>
@@ -44,7 +44,7 @@
             <span>• @p.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
             @if (p.TopicLocked) { <span class="lock-pill">Locked</span> }
             <span style="flex:1"></span>
-            <button class="linklike" @onclick="() => OnReport.InvokeAsync(p.Id)">Report</button>
+            <button class="linklike" @onclick="@(async () => await HandleReport(p.Id))">Report</button>
           </div>
         </div>
       </div>
@@ -85,19 +85,16 @@
   [Parameter] public bool IsLoadingMore { get; set; } = false;
 
   [Parameter] public EventCallback OnLoadMore { get; set; }
-  // Optional external notif; we do the vote implementation here.
-  [Parameter] public EventCallback<(int postId, int value)> OnVote { get; set; }
-  [Parameter] public EventCallback<int> OnReport { get; set; }
 
   Task LoadMore() => OnLoadMore.InvokeAsync();
 
-  bool IsVoteDisabled(PostListItem it) => it.VoteDisabled || it.TopicLocked || CurrentUserId <= 0;
+  bool IsVoteDisabled(PostListItem it) => !UserClaims.IsAuthenticated() || it.VoteDisabled || it.TopicLocked;
 
   async Task HandleVote(int postId, int value)
   {
       if (Items is null) return;
       var idx = Items.ToList().FindIndex(p => p.Id == postId);
-      if (idx < 0 || CurrentUserId <= 0) return;
+      if (idx < 0 || ! UserClaims.IsAuthenticated()) return;
 
       var it = Items[idx];
       var oldVote = it.MyVote ?? 0;
@@ -107,7 +104,7 @@
       Items[idx] = it with
       {
           VoteDisabled = true,
-          MyVote = next == 0 ? (int?)null : next,
+          MyVote = next == 0 ? null : next,
           Score = it.Score + (next - oldVote)
       };
       StateHasChanged();
@@ -120,7 +117,8 @@
           Items[idx] = Items[idx] with
           {
               Score = newScore,
-              VoteDisabled = false
+              VoteDisabled = false,
+              MyVote = next == 0 ? null : next,
           };
       }
       catch
@@ -132,9 +130,11 @@
       {
           StateHasChanged();
       }
+  }
 
-      if (OnVote.HasDelegate)
-          await OnVote.InvokeAsync((postId, value));
+  async Task HandleReport(int postId)
+  {
+    
   }
 }
 
@@ -167,4 +167,46 @@
   .meta-row{ display:flex; align-items:center; gap:8px; font-size:.9rem; opacity:.85 }
   .linklike{ background:transparent; border:none; color:var(--text); text-decoration:underline; cursor:pointer }
   .lock-pill{ border:1px solid var(--border-color); padding:2px 6px; border-radius:999px; font-size:.8rem }
+
+  .vote-btn{
+    border:1px solid var(--border-color);
+    background:transparent;
+    border-radius:8px;
+    width:34px; height:28px; cursor:pointer;
+    transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .05s ease;
+    outline: none;
+  }
+  .vote-btn:active{ transform: translateY(1px); }
+  .vote-btn:focus-visible{
+    box-shadow: 0 0 0 3px rgba(79,70,229,.35);
+    border-color: var(--primary-light);
+  }
+  .vote-btn.up:hover{
+    background: var(--success-lighter);
+    color: var(--on-success-lighter);
+    border-color: var(--success-light);
+  }
+  .vote-btn.down:hover{
+    background: var(--danger-lighter);
+    color: var(--on-danger-lighter);
+    border-color: var(--danger-light);
+  }
+
+  .vote-btn.up[aria-pressed="true"]{
+    color: var(--success);
+    border-color: var(--success-dark);
+  }
+  .vote-btn.down[aria-pressed="true"]{
+    color: var(--danger);
+    border-color: var(--danger-dark);
+  }
+
+  .vote-btn.up[aria-pressed="true"]:hover{ border-color: var(--success-darker); }
+  .vote-btn.down[aria-pressed="true"]:hover{ border-color: var(--danger-darker); }
+
+  .vote-btn[disabled]{ opacity:.4; cursor:not-allowed; box-shadow:none; }
+
+  .score.is-up{ color: var(--success-dark); }
+  .score.is-down{ color: var(--danger-dark); }
+
 </style>
