@@ -207,7 +207,7 @@
 
   async Task ReplyTo((int parentId, string text) ev)
   {
-    if (CurrentUserId <= 0) return;
+    if (!UserClaims.IsAuthenticated()) return;
 
     var reply = await _commentService.ReplyAsync(ev.parentId, CurrentUserId.Value, ev.text);
 

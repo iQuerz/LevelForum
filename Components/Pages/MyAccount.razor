@@ -13,6 +13,8 @@
 @inject PostService _postService
 @inject TopicService _topicService
 @inject NavigationManager _nav
+@inject NotificationService _notifService
+@inject CommentService _commentService
 
 <PageContainer Title="My Account">
     @if (!_loaded)
@@ -89,11 +91,40 @@
                 </div>
             </div>
 
-            <!-- NOTIFICATIONS (placeholder) -->
-            <div class="app-card" style="padding:16px; display:flex; justify-content:space-between; align-items:center;">
-                <strong>Notifications</strong>
-                <span class="muted">You have no notifications to read.</span>
+            <!-- NOTIFICATIONS -->
+            <div class="app-card" style="padding:16px; display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <strong>Notifications</strong>
+                    @if (_notifsLoading)
+                    {
+                        <span class="muted">Loading…</span>
+                    }
+                </div>
+
+                @if (!_notifsLoading && _notifs.Count == 0)
+                {
+                    <div class="muted">You have no notifications in the last 7 days.</div>
+                }
+                else if (!_notifsLoading)
+                {
+                    <div class="notif-list">
+                        @foreach (var n in _notifs)
+                        {
+                            <div class="notif-row">
+                                <div class="notif-main">
+                                    <div class="notif-msg">@n.Message</div>
+                                    <div class="notif-meta muted small">@n.Date.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</div>
+                                </div>
+                                <button class="btn small" title="Open post"
+                                        @onclick="@(() => _nav.NavigateTo(n.Url))">
+                                    Open post →
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
             </div>
+
 
             <!-- REPORTS -->
             @if (ShowReportsSection)
@@ -249,6 +280,18 @@
     .preview-title{ display:flex; align-items:center; gap:8px; margin-bottom:6px }
     .preview-body{ white-space:pre-wrap }
     .link{ color:var(--text); opacity:.9; text-decoration:underline; }
+
+    .notif-list{ display:flex; flex-direction:column; gap:8px; }
+    .notif-row{
+        display:flex; align-items:center; gap:10px;
+        border:1px solid rgba(255,255,255,.06);
+        background:rgba(255,255,255,.02);
+        border-radius:10px; padding:10px;
+    }
+    .notif-main{ display:flex; flex-direction:column; gap:4px; flex:1; min-width:0; }
+    .notif-msg{ color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .btn.small{ padding:6px 10px; font-size:12px; border-radius:8px; }
+
 </style>
 
 @code{
@@ -296,6 +339,8 @@
         catch { }
 
         if (ShowReportsSection) await RefreshReports();
+        
+        try { await RefreshNotifications(); } catch { /* swallow */ }
 
         _loaded = true;
     }
@@ -496,4 +541,77 @@
             await RefreshReports(); // refresh to show closed state and updated preview
         }
     }
+    
+    // Notifications state
+    bool _notifsLoading;
+    List<NotifRow> _notifs = new();
+
+    sealed class NotifRow
+    {
+        public int Id { get; set; }
+        public string Message { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string Url { get; set; } = "/";
+    }
+
+    async Task RefreshNotifications()
+    {
+        if (!_isAuth || _me is null) return;
+
+        _notifsLoading = true;
+        _notifs.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var list = await _notifService.GetUserNotificationsAsync(_me.Id);
+
+            var rows = new List<NotifRow>();
+            foreach (var n in list)
+            {
+                string url;
+                switch (n.TargetType)
+                {
+                    case Entities.ContentType.Post:
+                        url = $"/post/{n.TargetId}";
+                        break;
+
+                    case Entities.ContentType.Comment:
+                        try
+                        {
+                            var c = await _commentService.GetByIdAsync(n.TargetId, userId: _me.Id);
+                            if (c is null) continue;
+                            // anchor deo prilagodi prema tvojoj front-end konvenciji
+                            url = $"/post/{c.PostId}#comment-{n.TargetId}";
+                        }
+                        catch { continue; }
+
+                        break;
+
+                    default:
+                        // fallback ako se pojavi nešto novo
+                        url = "/";
+                        break;
+                }
+
+                rows.Add(new NotifRow
+                {
+                    Id = n.Id,
+                    Message = n.Message,
+                    Date = n.Date,
+                    Url = url
+                });
+            }
+
+            // najnovije prvo (ako servis već sortira, ovo je no-op)
+            _notifs = rows.OrderByDescending(r => r.Date).ToList();
+        }
+        finally
+        {
+            _notifsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+
 }

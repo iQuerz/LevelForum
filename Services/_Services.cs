@@ -15,5 +15,6 @@ public static class Services
         builder.Services.AddScoped<VoteService>();
         builder.Services.AddScoped<TopicFollowService>();
         builder.Services.AddScoped<ReportService>();
+        builder.Services.AddScoped<NotificationService>();
     }
 }

@@ -16,7 +16,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<Vote> Votes => Set<Vote>();
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<AppError> AppErrors => Set<AppError>();
-    //public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -45,6 +45,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .HasConversion<string>();
         b.Entity<AppUserTopicRole>()
             .Property(x => x.TopicRole)
+            .HasConversion<string>();
+        
+        b.Entity<Notification>()
+            .Property(x => x.TargetType)
             .HasConversion<string>();
         
         // Topic.CreatedBy: NE briši topike pri brisanju korisnika (razbija multiple-cascade putanju)

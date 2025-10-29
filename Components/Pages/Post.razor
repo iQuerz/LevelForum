@@ -99,7 +99,7 @@
 
     private async Task AddTopComment(string text)
     {
-        if (_post is null || CurrentUserId <= 0) return;
+        if (_post is null || !UserClaims.IsAuthenticated()) return;
         await _commentService.CreateAsync(_post.Id, CurrentUserId.Value, text, null);
         
         if (_commentsRef is not null)

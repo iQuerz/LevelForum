@@ -46,6 +46,9 @@ public sealed class CommentService
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             db.Comments.Add(cmt);
+            if (post.AuthorId != authorId) // ne treba mi notif za samog sebe
+                db.Notifications.Add(
+                    Notification.ForPostComment(postId, post.AuthorId, post.Title, body));
             topic.LastActivityAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
@@ -89,6 +92,10 @@ public sealed class CommentService
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             db.Comments.Add(reply);
+            if (parent.AuthorId != authorId) //ne treba mi za samog sebe
+                db.Notifications.Add(
+                    Notification.ForCommentReply(parentCommentId, parent.AuthorId, body));
+
             topic.LastActivityAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
