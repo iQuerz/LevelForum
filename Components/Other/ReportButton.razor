@@ -1,0 +1,168 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Entities = LevelForum.Data.Entities
+@using LevelForum.Data.Services
+@using LevelForum.Infrastructure
+
+<button type="button"
+        class="icon-btn"
+        title="@ButtonTitle"
+        disabled="@(!_isAuthenticated)"
+        @onclick="OpenModal">🚩</button>
+
+@if (_open)
+{
+  <div class="rb-backdrop" @onclick="CloseModal" aria-hidden="true"></div>
+  <div class="rb-modal" role="dialog" aria-modal="true" aria-label="Report content">
+    <div class="rb-header">
+      <div class="rb-title">Report</div>
+      <button class="rb-x" type="button" @onclick="CloseModal" aria-label="Close">✕</button>
+    </div>
+    <div class="rb-body">
+      <label class="rb-label" for="@_taId">Reason</label>
+      <textarea id="@_taId"
+                class="rb-textarea"
+                maxlength="@MaxLength"
+                @bind="_reason"
+                placeholder="Briefly explain why you are reporting this…"></textarea>
+      <div class="rb-hint">@(_reason?.Length ?? 0)/@MaxLength</div>
+      @if (!string.IsNullOrWhiteSpace(_error))
+      {
+        <div class="rb-error">@_error</div>
+      }
+    </div>
+    <div class="rb-footer">
+      <button class="rb-btn" type="button" @onclick="CloseModal">Cancel</button>
+      <button class="rb-btn primary"
+              type="button"
+              disabled="@(!_canSubmit || _saving)"
+              @onclick="SaveAsync">
+        @(_saving ? "Saving…" : "Save")
+      </button>
+    </div>
+  </div>
+}
+
+@code{
+  [CascadingParameter] protected Task<AuthenticationState>? authState { get; set; }
+  protected ClaimsPrincipal UserClaims => authState?.Result.User ?? new();
+
+  [Inject] private ReportService _reportService { get; set; } = default!;
+
+  [Parameter] public Entities.ContentType TargetType { get; set; }
+  [Parameter] public int TargetId { get; set; }
+  [Parameter] public string ButtonTitle { get; set; } = "Report";
+  [Parameter] public int MaxLength { get; set; } = 500;
+  [Parameter] public EventCallback OnReported { get; set; }
+
+  bool _open;
+  bool _saving;
+  string _reason = string.Empty;
+  string _error = string.Empty;
+
+  string _taId = $"rb-ta-{Guid.NewGuid():N}";
+
+  bool _isAuthenticated => UserClaims.IsAuthenticated();
+  int? _reporterId => UserClaims.UserId();
+
+  bool _canSubmit => _isAuthenticated && !string.IsNullOrWhiteSpace(_reason) && _reason.Trim().Length >= 4;
+
+  void OpenModal()
+  {
+    if (!_isAuthenticated) return;
+    _open = true;
+    _error = string.Empty;
+  }
+
+  void CloseModal()
+  {
+    if (_saving) return;
+    _open = false;
+    _error = string.Empty;
+  }
+
+  async Task SaveAsync()
+  {
+    if (!_canSubmit || !_reporterId.HasValue) return;
+
+    _saving = true;
+    _error = string.Empty;
+
+    try
+    {
+      await _reportService.CreateAsync(_reporterId.Value, TargetType, TargetId, _reason.Trim());
+      _open = false;
+      _reason = string.Empty;
+      if (OnReported.HasDelegate) await OnReported.InvokeAsync();
+    }
+    catch (Exception ex)
+    {
+      _error = ex.Message;
+    }
+    finally
+    {
+      _saving = false;
+      StateHasChanged();
+    }
+  }
+}
+
+
+<style>
+  .icon-btn {
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px;
+    color: var(--muted);
+  }
+  .icon-btn:hover { color: var(--text); }
+  .icon-btn[disabled]{ opacity:.4; cursor:not-allowed; }
+
+  /* modal */
+  .rb-backdrop{
+    position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000;
+  }
+  .rb-modal{
+    position: fixed; z-index: 1001;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(92vw, 380px);
+    background-color: var(--black);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    display: flex; flex-direction: column;
+  }
+  .rb-header{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--border-color); }
+  .rb-title{ font-weight:600; }
+  .rb-x{ background:transparent; border:none; cursor:pointer; font-size:16px; color:var(--muted); }
+  .rb-x:hover{ color:var(--text); }
+
+  .rb-body{ padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .rb-label{ font-size:12px; color:var(--muted); }
+  .rb-textarea{
+    width:100%; min-height:96px; resize:vertical;
+    background: var(--surface-2);
+    color: var(--text);
+    border:1px solid var(--border-color);
+    border-radius:8px; padding:8px;
+    outline:none;
+  }
+  .rb-textarea:focus{ box-shadow: 0 0 0 3px rgba(79,70,229,.25); border-color: var(--primary-light); }
+  .rb-hint{ font-size:12px; color:var(--muted); text-align:right; }
+  .rb-error{ font-size:12px; color: var(--on-danger); background: var(--danger); padding:6px 8px; border-radius:8px; }
+
+  .rb-footer{ display:flex; justify-content:flex-end; gap:8px; padding:10px 12px; border-top:1px solid var(--border-color); }
+  .rb-btn{
+    background: var(--surface-2);
+    color: var(--text);
+    border:1px solid var(--border-color);
+    border-radius:8px; padding:6px 10px; cursor:pointer;
+  }
+  .rb-btn:hover{ filter:brightness(1.05); }
+  .rb-btn.primary{ background: var(--primary); color: var(--on-primary); border-color: transparent; }
+  .rb-btn.primary:disabled{ opacity:.6; cursor:not-allowed; }
+
+</style>
