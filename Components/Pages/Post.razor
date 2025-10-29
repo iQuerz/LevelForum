@@ -6,9 +6,11 @@
 @using LevelForum.Components.Shared
 @using LevelForum.Data.Services
 @using LevelForum.Infrastructure
-@inject NavigationManager Nav
+
+@inject NavigationManager _nav
 @inject PostService _postService
 @inject CommentService _commentService
+@inject IJSRuntime JS
 
 <PageContainer Width="narrow">
     @if (_loading)
@@ -112,14 +114,19 @@
 
     private Task EditPost(int postId)
     {
-        Nav.NavigateTo($"/post/{postId}/edit");
+        _nav.NavigateTo($"/post/{postId}/edit");
         return Task.CompletedTask;
     }
 
-    private Task DeletePost(int postId)
+    private async Task DeletePost(int postId)
     {
-        Nav.NavigateTo("/");
-        return Task.CompletedTask;
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Delete this post?");
+        if (!confirmed)
+            return;
+
+        var post = await _postService.GetByIdAsync(postId);
+        await _postService.SoftDeleteAsync(postId);
+        _nav.NavigateTo("/topic/" + post.TopicId);
     }
 }
 

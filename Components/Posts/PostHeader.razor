@@ -1,9 +1,11 @@
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Entities = LevelForum.Data.Entities
 @using LevelForum.Data.Services
 @using LevelForum.Infrastructure
 @inject VoteService _voteService
+@inject AppUserService _userService
 
 <div class="post-header app-card">
   <div class="ph-wrap">
@@ -15,7 +17,7 @@
               disabled="@IsVoteDisabled"
               @onclick="() => HandleVote(+1)">▲</button>
 
-              <div class="ph-score @( _myVote == 1 ? "is-up" : _myVote == -1 ? "is-down" : null)" aria-live="polite">@_score</div>
+      <div class="ph-score @( _myVote == 1 ? "is-up" : _myVote == -1 ? "is-down" : null)" aria-live="polite">@_score</div>
 
       <button type="button"
               class="vote-btn down"
@@ -48,6 +50,14 @@
                 title="Report post"
                 @onclick="() => OnReport.InvokeAsync(Id)">🚩</button>
 
+        @if (_canModerateTopic)
+        {
+          <button type="button"
+                  class="icon-btn"
+                  title="Delete post"
+                  @onclick="() => OnDeletePost.InvokeAsync(Id)">🗑️</button>
+        }
+
         @if (ShowActionsMenu)
         {
           <div class="ph-menu">
@@ -79,36 +89,50 @@
 
   [Parameter] public int Id { get; set; }
   [Parameter] public string Title { get; set; } = string.Empty;
-
   [Parameter] public int TopicId { get; set; }
   [Parameter] public string TopicTitle { get; set; } = string.Empty;
   [Parameter] public bool TopicLocked { get; set; }
-
   [Parameter] public string AuthorName { get; set; } = string.Empty;
   [Parameter] public DateTime CreatedAt { get; set; }
   [Parameter] public int Score { get; set; }
   [Parameter] public int? MyVote { get; set; }
-
-  [Parameter] public bool CanEditPost { get; set; } = false;
-  [Parameter] public bool CanDeletePost { get; set; } = false;
-
+  [Parameter] public bool CanEditPost { get; set; }
+  [Parameter] public bool CanDeletePost { get; set; }
   [Parameter] public EventCallback<int> OnReport { get; set; }
   [Parameter] public EventCallback<int> OnEditPost { get; set; }
   [Parameter] public EventCallback<int> OnDeletePost { get; set; }
 
   bool _menuOpen;
-
   int _score;
   int? _myVote;
   bool _voteDisabled;
+  bool _canModerateTopic;
 
   bool ShowActionsMenu => CanEditPost || CanDeletePost;
   bool IsVoteDisabled => _voteDisabled || TopicLocked || !UserClaims.IsAuthenticated();
 
-  protected override void OnParametersSet()
+  protected override async Task OnParametersSetAsync()
   {
     _score = Score;
     _myVote = MyVote;
+
+    _canModerateTopic = false;
+
+    if (UserClaims.IsAuthenticated())
+    {
+      if (UserClaims.HasAtLeastRole(Entities.AppRole.Moderator))
+      {
+        _canModerateTopic = true;
+        return;
+      }
+
+      var uid = CurrentUserId;
+      if (uid.HasValue)
+      {
+        var roles = await _userService.GetTopicRolesAsync(TopicId);
+        _canModerateTopic = roles.Any(r => r.AppUserId == uid.Value && r.HasAtLeast(Entities.AppRole.Moderator));
+      }
+    }
   }
 
   async Task HandleVote(int v)
@@ -189,7 +213,6 @@
     box-shadow: 0 0 0 3px rgba(79,70,229,.35);
     border-color: var(--primary-light);
   }
-
   .vote-btn.up:hover{
     background: var(--success-lighter);
     color: var(--on-success-lighter);
@@ -200,18 +223,23 @@
     color: var(--on-danger-lighter);
     border-color: var(--danger-light);
   }
-
-  .vote-btn.up[aria-pressed="true"]{
-    color: var(--success);
-  }
-  .vote-btn.down[aria-pressed="true"]{
-    color: var(--danger);
-  }
-
+  .vote-btn.up[aria-pressed="true"]{ color: var(--success); }
+  .vote-btn.down[aria-pressed="true"]{ color: var(--danger); }
   .vote-btn.up[aria-pressed="true"]:hover{ border-color: var(--success-darker); }
   .vote-btn.down[aria-pressed="true"]:hover{ border-color: var(--danger-darker); }
-
   .vote-btn[disabled]{ opacity:.4; cursor:not-allowed; box-shadow:none; }
   .ph-score.is-up{ color: var(--success-dark); }
   .ph-score.is-down{ color: var(--danger-dark); }
+
+  .icon-btn {
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px;
+    color: var(--muted);
+  }
+  .icon-btn:hover {
+    color: var(--text);
+  }
 </style>
